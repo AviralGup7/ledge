@@ -1,0 +1,19 @@
+name: Bug / Regression
+description: Test-first law (T-01): fix ships with a failing seed
+title: "[bug] "
+labels: ["type:bug"]
+body:
+  - type: textarea
+    id: happened
+    attributes: { label: What happened (user-visible) }
+    validations: { required: true }
+  - type: textarea
+    id: invariant
+    attributes: { label: Which invariant/contract was violated? (if known) }
+  - type: textarea
+    id: seed
+    attributes: { label: Failing test seed / repro steps (becomes regression seed) }
+    validations: { required: true }
+  - type: textarea
+    id: killpoints
+    attributes: { label: New chaos kill points implied (mutation path touched?) }

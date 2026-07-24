@@ -1,0 +1,12 @@
+[
+  { "title": "M0 \"It boots\"", "description": "Loadable extension + CI constitution (Roadmap §2)" },
+  { "title": "M1 \"Truth Engine\"", "description": "Journal + two-phase + chaos gate G1 (wk 1-3)" },
+  { "title": "M2 \"You can touch it\" (Alpha)", "description": "Guardian, quiet page, first-run relief (wk 3-4)" },
+  { "title": "M3 \"Find anything\"", "description": "Reflex search, recently closed, trash/undo (wk 4-5)" },
+  { "title": "M4 \"Come as you are\" (Internal Beta)", "description": "Importers/exporters (wk 5-6, v1 feature freeze)" },
+  { "title": "M5 \"Bulletproof\" (Public Beta)", "description": "W7 flow, rescue console, diagnostics (wk 6-7)" },
+  { "title": "M6 \"v1.0 Stable\"", "description": "Freeze, gates, CWS publish (wk 7-8)" },
+  { "title": "M7 \"It knows things\" (v1.1)", "description": "AI pipeline, summaries, briefs, switcher (wk 8-11)" },
+  { "title": "M8 \"It remembers Mondays\" (v1.2)", "description": "Topics, morning card, 50k hardening (wk 11-14)" },
+  { "title": "M9+ \"v2 boundaries\"", "description": "Proofs only: sync/crypto/licensing shapes. Never ships v2 features." }
+]

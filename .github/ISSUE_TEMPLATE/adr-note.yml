@@ -1,0 +1,16 @@
+name: ADR Note Proposal
+description: Architecture change (ADR governance — see §9 triggers)
+title: "[ADR-0xx] "
+labels: ["type:adr-note"]
+body:
+  - type: textarea
+    id: decision
+    attributes: { label: What is being decided? }
+    validations: { required: true }
+  - type: textarea
+    id: trigger
+    attributes: { label: Which §9 trigger fired? (irreversible / permission / egress / durability / dep-quarantine / sync-shape) }
+    validations: { required: true }
+  - type: textarea
+    id: options
+    attributes: { label: Options + recommended + reconsideration criteria }

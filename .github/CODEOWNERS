@@ -1,0 +1,13 @@
+# Ownership (Constitution P-08). Default owner until team >= 2: @AviralGup7
+*                                        @AviralGup7
+
+# TRUTH MODULES — senior counter-signature required when team >= 2 (§5).
+/src/infrastructure/journal/             @AviralGup7
+/src/infrastructure/storage/             @AviralGup7
+/src/infrastructure/recovery/            @AviralGup7
+/src/application/hub/                    @AviralGup7
+ops/chaos/                               @AviralGup7
+
+# Public covenants (read-forever law A-13)
+/docs/governance/                        @AviralGup7
+docs/permissions.md                      @AviralGup7

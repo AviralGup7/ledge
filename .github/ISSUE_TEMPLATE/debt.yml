@@ -1,0 +1,20 @@
+name: Technical Debt (DEBT register)
+description: Constitution §10 — unregistered debt is negligence
+title: "[DEBT-###] "
+labels: ["type:debt"]
+body:
+  - type: textarea
+    id: why
+    attributes: { label: Why incurred / what it costs }
+    validations: { required: true }
+  - type: input
+    id: expiry
+    attributes: { label: Expiry (release or date) }
+    validations: { required: true }
+  - type: input
+    id: owner
+    attributes: { label: Owner slot (P/X/Q/D) }
+    validations: { required: true }
+  - type: textarea
+    id: reversal
+    attributes: { label: Reversal plan }
