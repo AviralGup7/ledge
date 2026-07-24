@@ -1,0 +1,28 @@
+name: Release (tag-driven; release-gate manifest per EES §8)
+on:
+  push:
+    tags: ['v*.*.*']
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version-file: .nvmrc, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: FULL gate (Constitution: releases never skip gates; hotfix law is the only expedited path and still runs these)
+        run: pnpm ci:all
+      - name: Package artifact
+        run: pnpm zip
+      - name: Release manifest (sizes, deps, audit snapshot)
+        run: node scripts/release-manifest.mjs
+      - name: Create GitHub Release (draft — human publishes)
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: |
+            .output/*.zip
+            ops/release-manifest.json
+          generate_release_notes: true

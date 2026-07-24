@@ -1,0 +1,29 @@
+name: Nightly (soak, seeds, hygiene)
+on:
+  schedule: [{ cron: '23 2 * * *' }]
+  workflow_dispatch:
+jobs:
+  heavy-seeds:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version-file: .nvmrc, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: Property 10000 seeds
+        run: pnpm test:property
+        env: { FC_NUM_RUNS: 10000 }
+  perf-harness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Perf harness placeholder (activates with E7-T02 at M1 gate)
+        run: echo "Perf harness ships with E7-T02; this job turns itself on when ops/tests/perf/harness exists."
+  hygiene-report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dead-code + TODO/TEMP expiry sweep (quarterly ritual is human; nightly only reports)
+        run: grep -RInE "TEMP\(|TODO\(" src entrypoints || echo "no debt markers found"

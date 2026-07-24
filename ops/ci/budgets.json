@@ -1,0 +1,9 @@
+{
+  "$comment": "EES §7.3 bundle budgets (gzip KB). Tighten-only (ADR-029). Checked by scripts/bundle-check.mjs.",
+  "entries": [
+    { "name": "background (core SW)", "glob": "(background)", "maxGzipKB": 300 },
+    { "name": "quiet-page", "glob": "(quiet)", "maxGzipKB": 150 },
+    { "name": "overlay+guardian", "glob": "(overlay|guardian)", "maxGzipKB": 80 },
+    { "name": "importers exporters", "glob": "(import|export)", "maxGzipKB": 120 }
+  ]
+}

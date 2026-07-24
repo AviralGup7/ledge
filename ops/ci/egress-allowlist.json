@@ -1,0 +1,9 @@
+{
+  "$comment": "A-10: the v1 egress table is EMPTY. Anything matching a URL in build output must appear here with an ADR reference, or the build fails.",
+  "allowed": [
+    { "pattern": "^https?://(localhost|127\\.0\\.0\\.1)(:\\d+)?", "adr": "dev-only" },
+    { "pattern": "^https?://www\\.w3\\.org/", "adr": "SVG namespaces in markup" },
+    { "pattern": "^https?://chrome\\.google\\.com", "adr": "help links" },
+    { "pattern": "^https?://github\\.com/AviralGup7/ledge", "adr": "self-links in docs UI" }
+  ]
+}

@@ -1,0 +1,18 @@
+# Chaos kill points (T-04: EVERY mutation path enumerates its points here — PR template enforces).
+# Convention: <flow>.<phase-boundary> — harness kills the SW/offscreen at each point.
+park.commit-intent.before
+park.commit-intent.after
+park.browser-close.mid-batch
+park.commit-completion.before
+park.commit-completion.after
+resume.intent.after
+resume.window-create.mid
+resume.tab-create.mid-batch
+delete.commit.before
+delete.commit.after
+undo.apply.mid
+import.commit.chunk-mid
+import.commit.before-final-marker
+trash.sweep.mid
+archive.conclude.mid.artifact-write
+# Notes: seed corpus += every point above at Tier-1 gate (EES §8). Never remove points; deprecate by comment only.
