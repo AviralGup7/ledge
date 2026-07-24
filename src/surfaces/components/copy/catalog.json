@@ -1,0 +1,20 @@
+{
+  "msg": {
+    "heartbeat": {
+      "safe": "{count} tabs safe",
+      "recovered": "recovered after browser restart"
+    },
+    "empty": {
+      "strip": "Nothing open. Everything is kept.",
+      "archive": "Your future library. Park something and it will be here.",
+      "search": "Nothing kept matches. Showing open tabs and recently closed."
+    },
+    "recovery": {
+      "updated": "Chrome updated. Everything is safe.",
+      "crashed": "Chrome closed unexpectedly. Everything is safe — {asOf}."
+    },
+    "action": {
+      "putBack": "Put everything back"
+    }
+  }
+}
