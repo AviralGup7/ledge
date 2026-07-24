@@ -1,0 +1,12 @@
+node_modules/
+.output/
+dist/
+.wxt/
+*.log
+.DS_Store
+coverage/
+.turbo/
+# secrets — never commit (S-05)
+.env
+.env.*
+!.env.example

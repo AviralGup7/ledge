@@ -1,0 +1,5 @@
+.output/
+.wxt/
+docs/governance/
+ops/fixtures/
+pnpm-lock.yaml

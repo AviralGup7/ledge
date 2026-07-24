@@ -1,0 +1,26 @@
+{
+  "extends": "./.wxt/tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "types": ["chrome", "vitest/globals"],
+    "baseUrl": ".",
+    "paths": {
+      "@/shared-kernel/*": ["src/shared-kernel/*"],
+      "@/domain/*": ["src/domain/*"],
+      "@/application/*": ["src/application/*"],
+      "@/infrastructure/*": ["src/infrastructure/*"],
+      "@/surfaces/*": ["src/surfaces/*"],
+      "@/roots/*": ["src/roots/*"],
+      "@/testing/*": ["ops/tests/*"]
+    }
+  },
+  "include": ["src/**/*", "entrypoints/**/*", "ops/tests/**/*", "tools/**/*"]
+}

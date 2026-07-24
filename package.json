@@ -1,0 +1,45 @@
+{
+  "name": "ledge",
+  "version": "0.0.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "description": "Ledge — an AI-powered tab & session manager. Never lose a thought.",
+  "author": "Aviral Gupta <f20240294@pilani.bits-pilani.ac.in>",
+  "repository": { "type": "git", "url": "https://github.com/AviralGup7/ledge.git" },
+  "type": "module",
+  "engines": { "node": ">=22.0.0", "pnpm": ">=9.0.0" },
+  "scripts": {
+    "dev": "wxt",
+    "build": "wxt build",
+    "zip": "wxt zip",
+    "postinstall": "wxt prepare",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint:format": "prettier --check .",
+    "format": "prettier --write .",
+    "check:deps": "depcruise src entrypoints --config .dependency-cruiser.js",
+    "check:egress": "node scripts/egress-guard.mjs",
+    "check:copy": "node scripts/copy-lint.mjs",
+    "check:bundle": "node scripts/bundle-check.mjs",
+    "check:dep-policy": "node scripts/dep-policy.mjs",
+    "test": "vitest run --project unit",
+    "test:unit": "vitest run --project unit",
+    "test:property": "vitest run --project property",
+    "ci:all": "pnpm lint:format && pnpm lint && pnpm typecheck && pnpm check:deps && pnpm check:copy && pnpm test && pnpm test:property && pnpm build && pnpm check:bundle && pnpm check:egress && pnpm check:dep-policy"
+  },
+  "dependencies": {
+    "dexie": "^4.0.11"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.300",
+    "dependency-cruiser": "^16.10.0",
+    "eslint": "^9.20.0",
+    "eslint-plugin-ledge": "file:tools/eslint-plugin-ledge",
+    "fast-check": "^4.0.0",
+    "prettier": "^3.5.0",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.24.0",
+    "vitest": "^3.0.0",
+    "wxt": "^0.20.0"
+  }
+}
