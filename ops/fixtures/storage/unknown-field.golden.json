@@ -1,0 +1,83 @@
+{
+  "$comment": "E1-T09 · EES §2.9 forward-tolerance law: a record written by a FUTURE schema (fields this build does not know) must round-trip byte-identical through the storage adapter. The adapter performs no field mapping — these fixtures prove it. Golden entries are keyed by store and carry unknown fields at record, nested, and array depth. Regression entries append-only (ADR-033); never edit existing cases.",
+  "cases": [
+    {
+      "id": "mission-future-v9",
+      "store": "missions",
+      "record": {
+        "missionId": "01J0ZK9QW8MISSIONFUTUREV9A",
+        "name": "Field research",
+        "namedBy": "user",
+        "state": "active",
+        "concluded": false,
+        "createdAt": 1785000000000,
+        "lastActiveAt": 1785006000000,
+        "tabIds": ["01J0ZK9QW8TABAAAAAAAAAAAAA1"],
+        "futureFieldV9": {
+          "aiNarrative": "kept verbatim though this build cannot read it",
+          "confidence": 0.87,
+          "tags": ["alpha", "beta"]
+        },
+        "syncVectorV2": [3, 1, 4, 1, 5, 9],
+        "optionalNullV3": null,
+        "toggleV4": true
+      }
+    },
+    {
+      "id": "tab-future-v7",
+      "store": "tabs",
+      "record": {
+        "ledgeTabId": "01J0ZK9QW8TABFUTUREV70001",
+        "missionId": "01J0ZK9QW8MISSIONFUTUREV9A",
+        "url": "https://example.com/a?x=1",
+        "urlCanonHash": "4f2a91c0b77108de",
+        "canonRulesV": 1,
+        "title": "Example A",
+        "domain": "example.com",
+        "state": "LIVE",
+        "firstSeenAt": 1785000000000,
+        "lastActiveAt": 1785006000000,
+        "contentIndexFlag": false,
+        "futureScrollV7": { "y": 0.42, "anchorText": "Section 3" },
+        "aiNoteV6": null
+      }
+    },
+    {
+      "id": "session-future-v5",
+      "store": "sessions",
+      "record": {
+        "snapshotId": "01J0ZK9QW8SNAPFUTUREV50001",
+        "partIndex": 0,
+        "missionId": "01J0ZK9QW8MISSIONFUTUREV9A",
+        "tabRecordIds": ["01J0ZK9QW8TABFUTUREV70001"],
+        "groupStyles": [{ "title": "Reading", "color": "blue", "collapsed": false }],
+        "takenAt": 1785006000000,
+        "trigger": "park",
+        "futureCompressionV5": { "codec": "zstd", "level": 3 }
+      }
+    },
+    {
+      "id": "logs-future-v2",
+      "store": "logs",
+      "record": {
+        "slot": 7,
+        "level": "info",
+        "msg": "boot completed",
+        "ctxHash": 123456789,
+        "ts": 1785000000123,
+        "futureTraceV2": ["bg-root", "hub", "storage"],
+        "samplingV2": { "rate": 0.25, "bucket": 42 }
+      }
+    },
+    {
+      "id": "meta-future-v3",
+      "store": "meta",
+      "record": {
+        "key": "nudgeCounters",
+        "value": { "restore": 3, "dupe": 1 },
+        "futureMigrationLedgerV3": ["v1.0.0-baseline", "v1.1.0-delta-ring"],
+        "experimentsV2": { "quietPageHero": false }
+      }
+    }
+  ]
+}
