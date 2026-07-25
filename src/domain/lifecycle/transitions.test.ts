@@ -10,6 +10,7 @@ import {
   decideParkPlan,
   decidePurgeSubject,
   decideRename,
+  decideResume,
   decideSplit,
   decideTrash,
   decideTrashRestore,
@@ -292,6 +293,61 @@ describe('trash + restore law (C15/C16/C17 + §10-R13)', () => {
   });
 });
 
+describe('resume legality (C7 + §6.5) + undo-atom refinements (Spec §5.12)', () => {
+  it('resume requires PARKED/ARCHIVED; partial must be a non-empty membership subset', () => {
+    const base = { missionId: 'm1', memberTabIds: ['t1', 't2'] };
+    expect(decideResume({ ...base, state: 'live', mode: 'full' }).allowed).toBe(false);
+    expect(decideResume({ ...base, state: 'trash', mode: 'full' }).allowed).toBe(false);
+    expect(decideResume({ ...base, state: 'parked', mode: 'partial', tabIds: [] }).allowed).toBe(
+      false,
+    );
+    expect(
+      decideResume({ ...base, state: 'parked', mode: 'partial', tabIds: ['t9'] }).allowed,
+    ).toBe(false);
+    const full = decideResume({ ...base, state: 'archived', mode: 'full' });
+    expect(full.allowed).toBe(true);
+    if (full.allowed) {
+      expect(full.events[0]?.type).toBe('ResumeAccepted');
+      expect(full.events[0]?.payload).toMatchObject({ missionId: 'm1', mode: 'full' });
+    }
+    const partial = decideResume({ ...base, state: 'parked', mode: 'partial', tabIds: ['t2'] });
+    expect(partial.allowed).toBe(true);
+  });
+  it('rename inverse atom restores the previous name; absent old name ⇒ no atom', () => {
+    const withPrev = decideRename('m1', 'New', 'user', ' Old ');
+    expect(withPrev.allowed && withPrev.inverseAtom?.payload).toMatchObject({
+      missionId: 'm1',
+      name: 'Old',
+    });
+    const without = decideRename('m1', 'New', 'user');
+    expect(without.allowed && without.inverseAtom === undefined).toBe(true);
+  });
+  it('split atom names the source so undo can re-home the selection', () => {
+    const d = decideSplit('m-new', ['t1'], ['t1', 't2'], undefined, 'user', 'm-src');
+    expect(d.allowed && d.inverseAtom?.payload).toMatchObject({
+      sourceMissionId: 'm-src',
+      shellMissionId: 'm-new',
+    });
+    if (d.allowed) expect(d.events[1]?.payload).toMatchObject({ fromMissionId: 'm-src' });
+  });
+  it('undo-replay restore skips the C16 retention window; user path does not', () => {
+    const retention = trashRetentionMsOf(DEFAULT_LIFECYCLE_POLICY);
+    const base = {
+      kind: 'tab' as const,
+      id: 't1',
+      state: 'trash',
+      parentMissionId: 'm1',
+      parentState: 'live',
+      resolvedMissionId: 'm1',
+      deletedAt: 0,
+      now: retention + 1,
+      trashRetentionMs: retention,
+    };
+    expect(decideTrashRestore(base).allowed).toBe(false);
+    expect(decideTrashRestore({ ...base, viaUndo: true }).allowed).toBe(true);
+  });
+});
+
 describe('undo law + policy reader', () => {
   it('undo refuses an empty stack and emits no novel events', () => {
     expect(decideUndo(0).allowed).toBe(false);
@@ -331,9 +387,19 @@ describe('§4 catalog parity — every planned event validates against the froze
       issuedAt: 1,
     }),
   );
-  collect('rename', decideRename(idOf(4), 'Deep Work', 'user'));
+  collect('rename', decideRename(idOf(4), 'Deep Work', 'user', 'Old Work'));
   collect('merge', decideMerge(idOf(5), idOf(6), [idOf(7)], 'live', 'archived'));
-  collect('split', decideSplit(idOf(8), [idOf(9)], [idOf(9)], 'Focus', 'user'));
+  collect('split', decideSplit(idOf(8), [idOf(9)], [idOf(9)], 'Focus', 'user', idOf(22)));
+  collect(
+    'resume',
+    decideResume({
+      missionId: idOf(23),
+      state: 'parked',
+      mode: 'partial',
+      tabIds: [idOf(24)],
+      memberTabIds: [idOf(24), idOf(25)],
+    }),
+  );
   collect('archive', decideArchive(idOf(10), 'live'));
   collect('conclude', decideConclude(idOf(11), 'archived', 'done'));
   collect(
@@ -392,7 +458,7 @@ describe('§4 catalog parity — every planned event validates against the froze
   );
 
   it('every decider family contributes events (coverage anchor)', () => {
-    expect(decisions.length).toBe(11);
+    expect(decisions.length).toBe(12);
     expect(decisions.every((d) => d.events.length > 0)).toBe(true);
   });
   it('every planned event is a known §4 type with a registry-valid payload', () => {

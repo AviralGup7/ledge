@@ -18,6 +18,7 @@ export {
   decideParkPlan,
   decidePurgeSubject,
   decideRename,
+  decideResume,
   decideSplit,
   decideTrash,
   decideTrashRestore,

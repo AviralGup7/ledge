@@ -77,14 +77,23 @@ export const decideParkPlan = (input: ParkPlanInput): Decision => {
 
 // ── Mission-level family (C2, C9, C11, C12, C13, C14) ─────────────────────────────
 
-export const decideRename = (missionId: string, name: string, namedBy: string): Decision => {
+export const decideRename = (
+  missionId: string,
+  name: string,
+  namedBy: string,
+  previousName?: string | undefined,
+): Decision => {
   const trimmed = name.replace(/\s+/g, ' ').trim();
   if (trimmed.length === 0) return refuse('rename-empty-after-trim');
-  return allow([{ type: 'MissionRenamed', payload: { missionId, name: trimmed, namedBy } }], {
-    kind: 'rename-mission',
-    payload: { missionId, name: trimmed },
-    label: 'msg.undo.renamed',
-  });
+  // Universal-undo law (Spec §5.12): the inverse atom restores the PREVIOUS name; the
+  // service reads it from the view row. No atom when the old name is unknowable
+  // (provisional rows) — an atom that cannot restore is a worse lie than no atom.
+  const prev = previousName?.replace(/\s+/g, ' ').trim();
+  const atom =
+    prev !== undefined && prev.length > 0
+      ? { kind: 'rename-mission', payload: { missionId, name: prev }, label: 'msg.undo.renamed' }
+      : undefined;
+  return allow([{ type: 'MissionRenamed', payload: { missionId, name: trimmed, namedBy } }], atom);
 };
 
 export const decideMerge = (
@@ -118,6 +127,7 @@ export const decideSplit = (
   sourceTabIds: readonly string[],
   newMissionName: string | undefined,
   namedBy: string,
+  sourceMissionId?: string | undefined,
 ): Decision => {
   if (newMissionId.length === 0) return refuse('split-idless-target');
   if (tabIds.length === 0) return refuse('split-empty-selection');
@@ -125,7 +135,11 @@ export const decideSplit = (
   if (!contained) return refuse('split-selection-not-subset');
   const moves: PlannedEvent[] = tabIds.map((tabId) => ({
     type: 'TabMoved',
-    payload: { tabId, missionId: newMissionId },
+    payload: {
+      tabId,
+      missionId: newMissionId,
+      ...(sourceMissionId !== undefined ? { fromMissionId: sourceMissionId } : {}),
+    },
   }));
   return allow(
     [
@@ -141,7 +155,17 @@ export const decideSplit = (
       },
       ...moves,
     ],
-    { kind: 'merge-back', payload: { tabIds: [...tabIds] }, label: 'msg.undo.split' },
+    // Universal-undo (Spec §5.12): undo re-homes the selection to its source and
+    // archives the shell — both §4-expressible, so the atom must name the source.
+    {
+      kind: 'merge-back',
+      payload: {
+        tabIds: [...tabIds],
+        ...(sourceMissionId !== undefined ? { sourceMissionId } : {}),
+        shellMissionId: newMissionId,
+      },
+      label: 'msg.undo.split',
+    },
   );
 };
 
@@ -240,9 +264,13 @@ export const decideTrashRestore = (input: {
   readonly now: number;
   readonly trashRetentionMs: number;
   readonly domainName?: string | undefined;
+  /** Undo-replay path (Spec §5.12 layering): the universal-undo gesture is an
+   *  in-session immediate replay, never gated by the C16 user-restore window. */
+  readonly viaUndo?: boolean | undefined;
 }): Decision => {
   if (input.state !== 'trash') return refuse('restore-not-in-trash');
-  if (input.now - input.deletedAt > input.trashRetentionMs) return refuse('restore-window-expired');
+  if (input.viaUndo !== true && input.now - input.deletedAt > input.trashRetentionMs)
+    return refuse('restore-window-expired');
   const events: PlannedEvent[] = [];
   if (input.parentState === undefined || input.parentState === 'trash') {
     events.push({
@@ -342,6 +370,43 @@ export const decideMove = (input: {
     payload: { tabIds: [...input.tabIds], tabSources: { ...input.tabSources } },
     label: 'msg.undo.moved',
   });
+};
+
+/** C7 + §6.5: resume admissibility (state PARKED/ARCHIVED; partial ⊆ membership).
+ *  Plans the durable ack-band event (ResumeAccepted rides BEFORE the browser mutation
+ *  per §6.5); the completion record (MissionResumed with the actual mapping) is the
+ *  resume service's post-execution stamp — the domain decides legality and the plan,
+ *  never browser outcomes. */
+export const decideResume = (input: {
+  readonly missionId: string;
+  readonly state: string;
+  readonly mode: 'full' | 'partial';
+  readonly tabIds?: readonly string[] | undefined;
+  readonly memberTabIds: readonly string[];
+}): Decision => {
+  if (input.state !== 'parked' && input.state !== 'archived')
+    return refuse('resume-requires-parked-or-archived');
+  if (input.mode === 'partial') {
+    const selected = input.tabIds ?? [];
+    if (selected.length === 0) return refuse('resume-partial-empty-selection');
+    if (!selected.every((t) => input.memberTabIds.includes(t)))
+      return refuse('resume-selection-not-subset');
+  }
+  const selected = input.mode === 'full' ? [...input.memberTabIds] : [...(input.tabIds ?? [])];
+  return allow([
+    {
+      type: 'ResumeAccepted',
+      // §4-pure payload ({missionId, mode, restoredMapping} only) — wall stamps are
+      // envelope HLC facts, not payload fields.
+      payload: {
+        missionId: input.missionId,
+        mode: input.mode,
+        // App-owned mapping record: planned selection (completion carries the actual
+        // browser id mapping under the same record key contract).
+        restoredMapping: { plannedTabIds: selected },
+      },
+    },
+  ]);
 };
 
 /** C18 + §10-R9: undo pops the stack, NEVER auto-retried (dispatcher registration law).
