@@ -59,6 +59,30 @@ describe('§2.10 invariants', () => {
     await h.engine.close();
   });
 
+  it('regression (fc seed -159411701): rename-then-assign before formation never dirties the view', async () => {
+    // The engine's patch law materializes a name-only row for the rename; the
+    // assign must not dereference tabIds on that partial (dirty-law contract),
+    // and formation closes the row out fully.
+    const h = await makeProjections();
+    const events = [renamedEnv(1, 1, 'early-name'), assignedEnv(2, 5, 1), formedEnv(3, 1, [1])];
+    const r = await h.projections.apply(events);
+    if (!r.ok) throw new Error(`apply failed: ${r.error.code}`);
+    expect(r.value.dirtied).toEqual([]);
+    const status = await h.projections.status();
+    if (!status.ok) throw new Error('status failed');
+    for (const view of status.value.views) {
+      expect(view.dirty, `${view.view} dirtied on a lawful catalog stream`).toBe(false);
+      expect(view.watermarks.at(0)?.seq).toBe(3);
+    }
+    // Forward tolerance: the provisional row is overwritten by the real
+    // formation (assignment membership is not lost — formed lists tab 1 and
+    // the provisional tab 5 was supplanted by the formed upsert, determinism).
+    const m1 = missionRow(await storeSnapshot(h, 'missions'), missionId(1));
+    expect(m1?.['name']).toBe('mission-1');
+    expect(m1?.['tabIds']).toEqual([tabId(1)]);
+    await h.engine.close();
+  });
+
   it('TabMoved removes from the source mission and adds to the target (per-aggregate order)', async () => {
     const h = await makeProjections();
     await h.projections.apply([

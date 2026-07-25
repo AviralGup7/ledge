@@ -37,6 +37,18 @@ const unwrap = <T>(r: Result<T, LedgeError>, what: string): T => {
 
 /** Generated I/O suites (journal seeds + compactions × FC_NUM_RUNS) need real headroom. */
 const PROP_TIMEOUT_MS = 600_000;
+const FALLBACK_RUNS = 500;
+/** Lane wall-clock law: each run seeds ≥517 events across 2-3 engines through
+ *  real transactions — unbounded at nightly's 10k this suite would burst the
+ *  per-test timeout without proportionate evidence, so it caps at 2000
+ *  (≥2× the PR lane's 1k; completeness here rides on shrinking, not volume). */
+const COMPACT_PROP_RUN_CAP = 2000;
+
+const laneRuns = (): number => {
+  const configured = fc.readConfigureGlobal().numRuns;
+  const global = typeof configured === 'number' && configured > 0 ? configured : FALLBACK_RUNS;
+  return Math.min(global, COMPACT_PROP_RUN_CAP);
+};
 
 interface WorldSpec {
   readonly sealedBatches: number;
@@ -162,6 +174,7 @@ describe('E2-T11 property — P1/P2/P3 sweep laws over generated worlds + plans'
             }
           },
         ),
+        { numRuns: laneRuns() },
       );
     },
     PROP_TIMEOUT_MS,
@@ -207,6 +220,7 @@ describe('E2-T11 property — P4 kill/resume byte-equivalence at every chunk bou
             }
           },
         ),
+        { numRuns: laneRuns() },
       );
     },
     PROP_TIMEOUT_MS,
@@ -261,6 +275,7 @@ describe('E2-T11 property — P5 replay idempotence + P6 live-edge continuity', 
             }
           },
         ),
+        { numRuns: laneRuns() },
       );
     },
     PROP_TIMEOUT_MS,

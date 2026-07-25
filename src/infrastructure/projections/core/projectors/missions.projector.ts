@@ -31,8 +31,18 @@ const withoutTab = (row: MissionViewRow, tabId: string): MissionViewRow => ({
   tabIds: row.tabIds.filter((t) => t !== tabId),
 });
 
+/**
+ * Guard precision is the dirty-law contract: unionTab/withoutTab DEREFERENCE
+ * tabIds, so a "row" here must actually be a full view row. The engine's patch
+ * law auto-materializes patch-partial rows (a MissionRenamed patch on a
+ * never-formed mission keys a name-only record) — checking missionId alone
+ * passes those and the tabIds deref throws the view into dirty. Lawful catalog
+ * streams must never dirty the view (regression: fc seed -159411701,
+ * rename-then-assign before formation). Patch-partials read as NOT-a-row and
+ * take the forward-tolerance provisional path like any missing row.
+ */
 const isMissionRow = (r: StoredRecord | undefined): r is StoredRecord & MissionViewRow =>
-  r !== undefined && typeof r['missionId'] === 'string';
+  r !== undefined && typeof r['missionId'] === 'string' && Array.isArray(r['tabIds']);
 
 export const missionsProjector: ProjectorDef = {
   view: 'missions',
