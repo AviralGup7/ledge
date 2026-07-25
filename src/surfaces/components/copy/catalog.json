@@ -14,7 +14,46 @@
       "crashed": "Chrome closed unexpectedly. Everything is safe — {asOf}."
     },
     "action": {
-      "putBack": "Put everything back"
+      "put-back": "Put everything back"
+    },
+    "error": {
+      "capability": "Ledge needs a browser capability that isn't available here.",
+      "refused": "Ledge didn't do that, by design.",
+      "store": "Local storage looks damaged.",
+      "conflict": "Undo would conflict with something that changed since.",
+      "durability": "That change hasn't been confirmed safe yet.",
+      "file": "That file can't be reached.",
+      "format": "That file isn't a format Ledge can read.",
+      "journal": "The journal noticed an inconsistency.",
+      "keys": "The recovery phrase doesn't match this archive.",
+      "migration": "An update couldn't finish moving your data.",
+      "tab-gone": "That tab isn't there anymore.",
+      "workroom": "The background workshop didn't start.",
+      "output": "The AI's answer came back in a shape Ledge can't use.",
+      "provider": "The AI provider is unavailable right now.",
+      "quota": "This device is out of storage space.",
+      "busy": "Ledge is finishing earlier work first.",
+      "relay": "Sync can't reach the relay.",
+      "render": "The page had trouble drawing.",
+      "schema": "Stored data arrived in a shape this version can't fully read."
+    },
+    "recover": {
+      "update": "Updating Chrome usually restores it; your archive stays safe either way.",
+      "restart": "Restart the browser and open Ledge again; everything kept is safe.",
+      "settings": "You can change this in Settings, and nothing was altered.",
+      "recovering": "Ledge is already recovering from the journal; anything uncertain will be shown plainly.",
+      "states": "You can pick a different state instead; nothing changed.",
+      "choose": "Pick which version to keep — both are listed, nothing was dropped.",
+      "retry": "Give it a moment and try again; nothing has been risked.",
+      "file-path": "Check where it was saved, then pick it again.",
+      "file-other": "Use a Ledge export or supported browser data, and nothing was changed.",
+      "keys": "Check the phrase you saved during setup; local data is untouched.",
+      "export": "Export a copy first, then update; your archive is intact.",
+      "recent": "You'll find it in Recently Closed, ready to bring back.",
+      "local": "Ledge keeps working offline; results fill in when it's back.",
+      "space": "Free some space and everything continues; nothing kept is lost.",
+      "wait": "Wait a few seconds; nothing needs redoing.",
+      "report": "Report it and the data is preserved exactly; nothing is discarded silently."
     }
   }
 }

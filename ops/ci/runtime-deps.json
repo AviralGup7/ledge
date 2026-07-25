@@ -2,6 +2,10 @@
   "$comment": "D-01 ceiling: max 5 runtime deps. D-03 quarantine: each may be imported ONLY inside its adapter dir.",
   "maxRuntimeDeps": 5,
   "deps": [
-    { "name": "dexie", "quarantine": "src/infrastructure/storage", "removalPlan": "SQLite-WASM projection adapter (ADR-013 reconsider path)" }
+    {
+      "name": "dexie",
+      "quarantine": "src/infrastructure/storage",
+      "removalPlan": "SQLite-WASM projection adapter (ADR-013 reconsider path)"
+    }
   ]
 }

@@ -1,4 +1,5 @@
 # PROJECT BOOTSTRAP — Phase 8 Engineering Scaffold
+
 **Status:** Complete · **Owner:** Aviral Gupta (@AviralGup7) · **Repo:** https://github.com/AviralGup7/ledge.git
 **Governing:** the seven locked documents in `docs/governance/`. This file describes what exists on disk, why, and the exact plan from empty repo to end-of-M0. Zero production feature code was written.
 
@@ -61,6 +62,7 @@ ledge/
 **Decision (ADR-036, unchanged):** this is a **single-package repository**, not an npm/pnpm-workspaces monorepo. Rationale: one deployable artifact (the extension), solo-to-3-person team, and the failure mode "monorepo ceremony > product code." Workspaces would add machinery the architecture doesn't need — the hexagonal tree already enforces isolation.
 
 **Package boundaries ARE the directory boundaries**, enforced three ways (belt, suspenders, helmet):
+
 1. **Path aliases** (`@/shared-kernel`, `@/domain`, `@/application`, `@/infrastructure`, `@/surfaces`, `@/roots`, `@/testing`) — imports resolve through aliases, never relative climbs, so boundary violations are grep-able.
 2. **`.dependency-cruiser.js`** makes Blueprint §4 executable: domain-is-an-island, no-chrome-outside-adapters, surfaces-are-authority-free, ai-cannot-mutate, storage-quarantined, entrypoints-only-compose-roots, no-circular, egress-is-forbidden.
 3. **CODEOWNERS + 2-reviewer truth modules** (constitution §5) cover what machines can't judge.
@@ -71,41 +73,45 @@ ledge/
 
 # SECTION 3 — BUILD SYSTEM
 
-| Choice | Decision | Why (locked-doc trace) |
-|---|---|---|
-| Package manager | **pnpm ≥9** (corepack), pinned by lockfile | Strict dep isolation (supply-chain culture S-07); fast CI installs; `pnpm dlx` discouraged |
-| Language | **TypeScript strict + 6 hardening flags** (`noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `noImplicitOverride`, `noFallthroughCasesInSwitch`, `isolatedModules`, `verbatimModuleSyntax`) | ADR-036; error taxonomy depends on exhaustive switches |
-| Build tooling | **WXT ^0.20** (MV3-first): manifest gen, dev server, zip packaging, ESM background | ADR-036 "WXT-class tooling", replaceable yearly per boring-tech law |
-| Bundling | WXT-managed (vite under it); entry budgets enforced post-build by `scripts/bundle-check.mjs` reading `ops/ci/budgets.json` | EES §7.3 budgets as data, tighten-only |
-| Linting | **ESLint 9 flat config** + local `eslint-plugin-ledge` (`no-commented-code`, `registry-purity`) + `no-restricted-globals` blocking fetch/XHR/WebSocket/EventSource | Constitution §2; egress law needs to fail in TWO independent systems (also egress-guard on output) |
-| Formatting | **Prettier**, single config, CI check; governance docs excluded from reformatting (canon is append-only) | §2: no format debates, ever |
-| Unit tests | **Vitest** (`--project unit`) | EES §8 "standard TS runner"; TS-native, fast |
-| Property tests | **fast-check** (`--project property`), seeds: 1000 PR / 10000 nightly via `FC_NUM_RUNS` | T-03 law |
-| Contract/Chaos/E2E (homes reserved, activation per roadmap) | `ops/tests/contract` (adapter suite), `ops/tests/chaos` (kill-point driver reads `ops/chaos/points.txt`), `ops/tests/integration` (puppeteer-class, real profile, load-unpacked) | ADR-032; activations arrive with E2-T09 / E3 contract suites / M2 golden flows — not needed at M0 (§9 finding #3) |
-| Path aliases | tsconfig `paths` mirrored in `wxt.config.ts alias` — **both must change together** (§9 finding #4 adds a CI consistency check) | Prevents silent alias drift between typecheck and bundle |
-| Runtime deps | `dexie` only (admission file `ops/ci/runtime-deps.json`, ceiling 5) | D-01/D-02/D-03 — enforced by dep-cruiser + dep-policy.mjs |
-| Dev workflow | `pnpm dev` (hot reload) → load `.output/chrome-mv3-dev` once → iterate; `pnpm ci:all` before every push | README 30-minute law |
+| Choice                                                      | Decision                                                                                                                                                                                            | Why (locked-doc trace)                                                                                            |
+| ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Package manager                                             | **pnpm ≥9** (corepack), pinned by lockfile                                                                                                                                                          | Strict dep isolation (supply-chain culture S-07); fast CI installs; `pnpm dlx` discouraged                        |
+| Language                                                    | **TypeScript strict + 6 hardening flags** (`noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `noImplicitOverride`, `noFallthroughCasesInSwitch`, `isolatedModules`, `verbatimModuleSyntax`) | ADR-036; error taxonomy depends on exhaustive switches                                                            |
+| Build tooling                                               | **WXT ^0.20** (MV3-first): manifest gen, dev server, zip packaging, ESM background                                                                                                                  | ADR-036 "WXT-class tooling", replaceable yearly per boring-tech law                                               |
+| Bundling                                                    | WXT-managed (vite under it); entry budgets enforced post-build by `scripts/bundle-check.mjs` reading `ops/ci/budgets.json`                                                                          | EES §7.3 budgets as data, tighten-only                                                                            |
+| Linting                                                     | **ESLint 9 flat config** + local `eslint-plugin-ledge` (`no-commented-code`, `registry-purity`) + `no-restricted-globals` blocking fetch/XHR/WebSocket/EventSource                                  | Constitution §2; egress law needs to fail in TWO independent systems (also egress-guard on output)                |
+| Formatting                                                  | **Prettier**, single config, CI check; governance docs excluded from reformatting (canon is append-only)                                                                                            | §2: no format debates, ever                                                                                       |
+| Unit tests                                                  | **Vitest** (`--project unit`)                                                                                                                                                                       | EES §8 "standard TS runner"; TS-native, fast                                                                      |
+| Property tests                                              | **fast-check** (`--project property`), seeds: 1000 PR / 10000 nightly via `FC_NUM_RUNS`                                                                                                             | T-03 law                                                                                                          |
+| Contract/Chaos/E2E (homes reserved, activation per roadmap) | `ops/tests/contract` (adapter suite), `ops/tests/chaos` (kill-point driver reads `ops/chaos/points.txt`), `ops/tests/integration` (puppeteer-class, real profile, load-unpacked)                    | ADR-032; activations arrive with E2-T09 / E3 contract suites / M2 golden flows — not needed at M0 (§9 finding #3) |
+| Path aliases                                                | tsconfig `paths` mirrored in `wxt.config.ts alias` — **both must change together** (§9 finding #4 adds a CI consistency check)                                                                      | Prevents silent alias drift between typecheck and bundle                                                          |
+| Runtime deps                                                | `dexie` only (admission file `ops/ci/runtime-deps.json`, ceiling 5)                                                                                                                                 | D-01/D-02/D-03 — enforced by dep-cruiser + dep-policy.mjs                                                         |
+| Dev workflow                                                | `pnpm dev` (hot reload) → load `.output/chrome-mv3-dev` once → iterate; `pnpm ci:all` before every push                                                                                             | README 30-minute law                                                                                              |
 
 ---
 
 # SECTION 4 — CI/CD PIPELINE
 
 ## `pr.yml` — the PR gate (runs on PR + main)
-| Job | Steps (in order) | Constitution citation |
-|---|---|---|
-| **lint** | format check → ESLint (+ledge rules) → **dependency law** → **calm-copy lint** → **dep-policy** → typecheck | §2, §3, A-10/A-12, D-01 |
-| **test** | unit (`T-02` floors) → property (`FC_NUM_RUNS=1000`) | T-02/T-03 |
-| **build-and-guards** | `wxt build` → **bundle budgets** → **egress guard on output** | EES §7.3, A-10 |
-| **supply-chain** | `pnpm audit --prod --audit-level=high` (runtime deps zero-tolerance) → **gitleaks** secret scan | S-05/S-07 |
-Concurrency: per-ref cancel-in-progress (cheap CI minutes rituals).
+
+| Job                                                                 | Steps (in order)                                                                                            | Constitution citation   |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------- |
+| **lint**                                                            | format check → ESLint (+ledge rules) → **dependency law** → **calm-copy lint** → **dep-policy** → typecheck | §2, §3, A-10/A-12, D-01 |
+| **test**                                                            | unit (`T-02` floors) → property (`FC_NUM_RUNS=1000`)                                                        | T-02/T-03               |
+| **build-and-guards**                                                | `wxt build` → **bundle budgets** → **egress guard on output**                                               | EES §7.3, A-10          |
+| **supply-chain**                                                    | `pnpm audit --prod --audit-level=high` (runtime deps zero-tolerance) → **gitleaks** secret scan             | S-05/S-07               |
+| Concurrency: per-ref cancel-in-progress (cheap CI minutes rituals). |
 
 ## `nightly.yml`
+
 10k-seed property soak · perf-harness job (placeholded — self-activates when `ops/tests/perf` lands with E7-T02) · hygiene report (TEMP/TODO sweep output, human triage weekly).
 
 ## `release.yml` (tag `v*.*.*`)
+
 Full `ci:all` (releases never skip gates — hotfix law's only speedup is review depth, never gates) → `wxt zip` → **release manifest** (version/commit/runtime-deps JSON per EES §8) → **draft** GitHub Release with artifact + manifest (a human publishes; store submission is manual in v1 — deliberate, per Roadmap M6-WP2/3).
 
 ## Branch protection (applied by `scripts/gh-setup.mjs`, printed for post-first-check run)
+
 PR required · 1 approval · required checks = the four job names above · linear history · no force-push · no deletion · `CODEOWNERS` gives truth-module review requirements their teeth once team ≥2.
 
 ---
@@ -127,17 +133,19 @@ PR required · 1 approval · required checks = the four job names above · linea
 `ops/github/issues.v1.json` contains **all 86 roadmap tasks** (E1×14, E2×11, E3×8, E4×13 incl. audit task E4-T16, E5×6, E6×6, E7×6, E8×15, E9×7), each with: `id`, `title`, `milestone` (exact string), `priority` (P0 for M0–M1, P1 for MVP line, P2 for v1.1/1.2, P3 for boundaries), `effort` (S/M/L/XL from the roadmap), `deps` (task IDs), and a body with **Purpose / Deps / Deliverables / Completion criteria / Effort** — enough to execute without reopening the roadmap (though the roadmap remains canonical).
 
 **Run after `gh-setup`:**
+
 ```bash
 node scripts/gh-setup.mjs          # labels + milestones (+ prints branch-protection command)
 node scripts/import-issues.mjs     # --dry-run first; creates 86 issues into milestones
 ```
+
 Critical-path tasks (E2-T02, E2-T11, E2-T09, E4-T03) carry `gate:G1` labels; the M9 milestone description forbids shipping v2 features from it.
 
 ---
 
 # SECTION 7 — DEVELOPER ENVIRONMENT
 
-**Required software:** Node ≥22 (`.nvmrc`), pnpm ≥9 (corepack), Chrome stable + Chrome Beta, `gh` CLI. Optional: VS Code (workspaces settings intentionally *not* committed — editor freedom; `.editorconfig` carries the baseline).
+**Required software:** Node ≥22 (`.nvmrc`), pnpm ≥9 (corepack), Chrome stable + Chrome Beta, `gh` CLI. Optional: VS Code (workspaces settings intentionally _not_ committed — editor freedom; `.editorconfig` carries the baseline).
 **Setup (timed, ≤30 min):** clone → corepack enable → `pnpm install` (runs `wxt prepare` generating `.wxt/`) → `pnpm dev` → load `.output/chrome-mv3-dev` in `chrome://extensions` → run `pnpm ci:all` once to verify the full gate locally.
 **Debug:** SW inspector via extensions page (stateless — kill it freely, that's the design), offscreen document link, quiet page via action, real-crash testing at `chrome://inducebrowsercrashforrealz`, chaos driver from M1.
 **Testing workflow:** suites activate per roadmap (unit/property from M1, contract with adapters E3, chaos with E2-T09, integration with M2 golden flows, perf with E7-T02). `pnpm test` / `test:property` now; everything else has its home reserved with `.gitkeep` and a named owner task.
@@ -150,13 +158,13 @@ Critical-path tasks (E2-T02, E2-T11, E2-T09, E4-T03) carry `gate:G1` labels; the
 Four logical commits, in this order (performed in workspace; push when ready):
 
 1. **`chore: scaffold — toolchain, TS strict, dotfiles, single dep`**
-   `package.json`, `tsconfig.json`, `wxt.config.ts`, `.nvmrc/.editorconfig/.gitattributes/.gitignore/.prettierrc*`, `assets/`. *After:* `pnpm install && pnpm build` works; zero sources beyond empty dirs.
+   `package.json`, `tsconfig.json`, `wxt.config.ts`, `.nvmrc/.editorconfig/.gitattributes/.gitignore/.prettierrc*`, `assets/`. _After:_ `pnpm install && pnpm build` works; zero sources beyond empty dirs.
 2. **`chore: CI constitution — gates as executable law`**
-   `.github/workflows/*`, `.dependency-cruiser.js`, `eslint.config.js` + plugin, `ops/ci/*.json`, `ops/chaos/points.txt`, all seven `scripts/*.mjs`. *After:* a deliberately violating fixture PR fails on all four gates.
+   `.github/workflows/*`, `.dependency-cruiser.js`, `eslint.config.js` + plugin, `ops/ci/*.json`, `ops/chaos/points.txt`, all seven `scripts/*.mjs`. _After:_ a deliberately violating fixture PR fails on all four gates.
 3. **`feat(scaffold): loadable MV3 entries + composition roots + copy catalog`**
-   `entrypoints/*` stubs, `src/roots/*`, `src/**` tree with `.gitkeep`, `src/surfaces/components/copy/catalog.json`, `tools/`. *After:* extension installs; action opens quiet-page placeholder; offscreen + SW present in extension page.
+   `entrypoints/*` stubs, `src/roots/*`, `src/**` tree with `.gitkeep`, `src/surfaces/components/copy/catalog.json`, `tools/`. _After:_ extension installs; action opens quiet-page placeholder; offscreen + SW present in extension page.
 4. **`docs+ops: governance corpus, README, permissions, templates, 86-task import`**
-   `docs/**`, `README.md`, `.github/{ISSUE_TEMPLATE,PULL_REQUEST_TEMPLATE,CODEOWNERS,labels.json,milestones.json,dependabot.yml}`, `ops/**`. *After:* `gh-setup` + `import-issues` run; board populated; **M0 exit checklist verified → milestone closes.**
+   `docs/**`, `README.md`, `.github/{ISSUE_TEMPLATE,PULL_REQUEST_TEMPLATE,CODEOWNERS,labels.json,milestones.json,dependabot.yml}`, `ops/**`. _After:_ `gh-setup` + `import-issues` run; board populated; **M0 exit checklist verified → milestone closes.**
 
 **Explicitly NOT present (law):** no feature code, no events/journal logic, no chrome adapter code beyond the boot stub, no remote URLs in source, no third-party runtime deps beyond dexie, no icons (placeholder era, §9#7), no `packages/`, no workspaces config.
 
@@ -166,21 +174,66 @@ Four logical commits, in this order (performed in workspace; push when ready):
 
 # SECTION 9 — BOOTSTRAP REVIEW (findings & resolutions)
 
-| # | Finding | Resolution (shipped in this scaffold or scheduled) |
-|---|---|---|
-| 1 | **Naming-law enforcement gap** — constitution §2 naming conventions (commands/events/errors) had no linter at M0 | Filed as **DEBT-001**: custom rule `ledge/naming-convention` due with E1-T07/T08 (registries it checks don't exist until then). Owner P. Expiry: M1 gate. Until then §5 review axis #7 covers it. |
-| 2 | **Missing e2e/chaos tooling at M0 would tempt early hacks** | Homes reserved (`ops/tests/*` with `.gitkeep`), activation tied to named tasks (E2-T09, E3 suites, M2 golden flows); puppeteer dev-dependency deliberately deferred (admitted with its task, not earlier — D-02 discipline applies to heavy devDeps too) |
-| 3 | **Franïse risk: alias drift between tsconfig and wxt.config** | Duplicate-by-design flagged; drift check folded into DEBT-001 era lint pass; single source lands when WXT alias-from-tsconfig matures |
-| 4 | **CI bottleneck risk:** four jobs × pnpm install | pnpm store cached per job; concurrency cancel-in-progress; suites promoted/demoted by runtime at weekly hygiene (CI ≤10 min law, Constitution §12) |
-| 5 | **Secret-leak surface pre-first-commit** | gitleaks in every PR from commit #2 — before any key could ever exist (S-05) |
-| 6 | **`.github/` provisioning can't live fully in files** (branch protection, Projects board) | `scripts/gh-setup.mjs` provisions labels/milestones and prints the exact protection command + board views; documented human step, not a tribal step |
-| 7 | **Icon/brand absent** | Deliberate: default puzzle icon during dev; assets land with E4 design era; store packet task M6-WP2 owns final art — prevents premature asset bikeshedding |
-| 8 | **Governance docs were outside the repo** | Copied to `docs/governance/` — decisions now live with the code (Constitution §12 "decisions live in repo, never in chat") |
-| 9 | **Git identity/remote don't persist across environments** | After clone: `git config user.name "Aviral Gupta" && git config user.email "f20240294@pilani.bits-pilani.ac.in" && git remote add origin https://github.com/AviralGup7/ledge.git` |
-| 10 | **perf harness placeholder could be "temporarily permanent"** | Nightly job self-activates only via `ops/tests/perf` existing (E7-T02 has P0 priority and M1 milestone — the absence is a gate violation, not a quiet stub) |
+| #   | Finding                                                                                                          | Resolution (shipped in this scaffold or scheduled)                                                                                                                                                                                                       |
+| --- | ---------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **Naming-law enforcement gap** — constitution §2 naming conventions (commands/events/errors) had no linter at M0 | Filed as **DEBT-001**: custom rule `ledge/naming-convention` due with E1-T07/T08 (registries it checks don't exist until then). Owner P. Expiry: M1 gate. Until then §5 review axis #7 covers it.                                                        |
+| 2   | **Missing e2e/chaos tooling at M0 would tempt early hacks**                                                      | Homes reserved (`ops/tests/*` with `.gitkeep`), activation tied to named tasks (E2-T09, E3 suites, M2 golden flows); puppeteer dev-dependency deliberately deferred (admitted with its task, not earlier — D-02 discipline applies to heavy devDeps too) |
+| 3   | **Franïse risk: alias drift between tsconfig and wxt.config**                                                    | Duplicate-by-design flagged; drift check folded into DEBT-001 era lint pass; single source lands when WXT alias-from-tsconfig matures                                                                                                                    |
+| 4   | **CI bottleneck risk:** four jobs × pnpm install                                                                 | pnpm store cached per job; concurrency cancel-in-progress; suites promoted/demoted by runtime at weekly hygiene (CI ≤10 min law, Constitution §12)                                                                                                       |
+| 5   | **Secret-leak surface pre-first-commit**                                                                         | gitleaks in every PR from commit #2 — before any key could ever exist (S-05)                                                                                                                                                                             |
+| 6   | **`.github/` provisioning can't live fully in files** (branch protection, Projects board)                        | `scripts/gh-setup.mjs` provisions labels/milestones and prints the exact protection command + board views; documented human step, not a tribal step                                                                                                      |
+| 7   | **Icon/brand absent**                                                                                            | Deliberate: default puzzle icon during dev; assets land with E4 design era; store packet task M6-WP2 owns final art — prevents premature asset bikeshedding                                                                                              |
+| 8   | **Governance docs were outside the repo**                                                                        | Copied to `docs/governance/` — decisions now live with the code (Constitution §12 "decisions live in repo, never in chat")                                                                                                                               |
+| 9   | **Git identity/remote don't persist across environments**                                                        | After clone: `git config user.name "Aviral Gupta" && git config user.email "f20240294@pilani.bits-pilani.ac.in" && git remote add origin https://github.com/AviralGup7/ledge.git`                                                                        |
+| 10  | **perf harness placeholder could be "temporarily permanent"**                                                    | Nightly job self-activates only via `ops/tests/perf` existing (E7-T02 has P0 priority and M1 milestone — the absence is a gate violation, not a quiet stub)                                                                                              |
 
 **Verdict:** clone → install → green gates → M1 task board is executable. No bootstrap debt unregistered, no enforcement wishful.
 
 ---
 
-*Bootstrap complete. First M1 actions per roadmap: E2-T01 journal (P1-slot), start E2-T11 compaction spike immediately (XL, critical path), E7-T02 perf harness in parallel (P2-slot). Chaotic good speed — the gates are watching.*
+_Bootstrap complete. First M1 actions per roadmap: E2-T01 journal (P1-slot), start E2-T11 compaction spike immediately (XL, critical path), E7-T02 perf harness in parallel (P2-slot). Chaotic good speed — the gates are watching._
+
+---
+
+## §10 Post-audit remediation log (2026-07-24) — gates now EXECUTABLE
+
+Independent audit (`ledge-implementation-readiness-audit.md`) found 6/11 gates red on a clean clone + 4 structural blind spots. All P0 and P1 findings resolved. Verified by full local suite (12/12 green) and violation probe matrix v2: **17 planted violations caught, 2 positive controls clean.**
+
+### P0 repairs
+
+| Finding               | Root cause                                                                  | Fix                                                            | Regression guard                        |
+| --------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------- | --------------------------------------- |
+| Frozen installs fail  | no `pnpm-lock.yaml` committed                                               | committed lockfile (a45fe3a) + `packageManager: pnpm@9.15.0`   | CI `pnpm install --frozen-lockfile`     |
+| ESLint total crash    | `no-console: ['error', {allow: []}]` schema-invalid                         | `'no-console': 'error'`                                        | `pnpm lint` runs on every PR            |
+| depcruise total crash | CJS `module.exports` in `.js` under `"type":"module"`                       | renamed `.dependency-cruiser.cjs`                              | `pnpm check:deps` runs on every PR      |
+| Typecheck red         | tsconfig `include` overrode `.wxt/tsconfig.json`, dropped WXT ambient types | explicit `.wxt/**/*.d.ts` in include (with warning comment)    | `pnpm typecheck` on every PR            |
+| Vitest red            | `--project` referenced projects no config defined                           | `vitest.config.ts` with both lanes, aliases, v8 coverage wired | `test:unit`/`test:property` on every PR |
+| bug.yml broken        | unquoted `:` in YAML scalar                                                 | quoted; 3 more inline-colon scalars quoted in workflows        | prettier parses YAML on every PR        |
+| copy-lint red         | scaffold catalog violated own key rule (`putBack`)                          | `msg.action.put-back`                                          | `pnpm check:copy`                       |
+| advisory CI window    | branch protection only printed                                              | `gh-setup.mjs --apply` executes it; runs idempotent            | manual step once `gh` is authed         |
+| prettier drift        | 7 files unformatted                                                         | normalized; root cause was gate never executed                 | `lint:format` merge-blocker             |
+
+### Defects discovered DURING remediation (all fixed)
+
+- ESLint flat config: `"!neg"` inside `files` arrays silently turns blocks match-all (verified) → all exclusions moved to per-block `ignores`.
+- dependency-cruiser: cruise schema rejects `unresolvable` in `forbidden.to` (though `--validate` accepts) → rule removed; phantom `import 'chrome'` remains fail-closed via typecheck + rollup build (verified).
+- pnpm realpath layout (`node_modules/.pnpm/...`) broke `^node_modules/dexie` globs → layout-proof patterns.
+- WXT entrypoint auto-discovery fails the build on stray files in `entrypoints/` — observed; build gate catches it fail-closed.
+
+### P1 automation (probe → detector)
+
+| Blind spot                 | Enforcement                                                                                                              | Probe result                                                    |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------- |
+| A-02 ambient `chrome` (P8) | ESLint scoped `no-restricted-globals` (allow: `infrastructure/chrome`, `roots`)                                          | CAUGHT in domain                                                |
+| Determinism (P11)          | `no-restricted-syntax`: `Date.now`, `new Date`, `Math.random`, `crypto.randomUUID`, `performance.now` in domain + kernel | 5/5 CAUGHT; identity dir clean (control)                        |
+| Single writer (P6)         | depcruise `writer-concentration`                                                                                         | CAUGHT from adapters/AI/importers/entrypoints                   |
+| Egress member access (P10) | `no-restricted-syntax` `self.fetch`/`new *.WebSocket` + guard scans wss/ftp/protocol-relative + terminated allowlist     | ESLint CAUGHT; guard CAUGHT wss + lookalike + protocol-relative |
+| Permissions drift          | `scripts/manifest-guard.mjs` + signed `ops/ci/manifest-baseline.json` + `check:manifest` in PR gate                      | CAUGHT `history` injection + `minimum_chrome_version`           |
+| Copy consumption           | `ledge/no-raw-copy` in surfaces (sentenced strings)                                                                      | CAUGHT inline sentence; catalog untouched                       |
+| Dep admission holes        | dep-policy triple-lock: allowlist + removalPlan + depcruise quarantine mention                                           | CAUGHT unlisted dep + empty plan                                |
+| Budget silence             | `required` ratchet in budgets.json (rename-safe, flip-on-ship)                                                           | background+quiet required now                                   |
+| Importer hazards           | idempotent upsert by `[Exx-Txx]`, exit 1 on failure, OS tempdir                                                          | logic reviewed; live run needs `gh` auth                        |
+
+### Still manual (P2, by design)
+
+Branch protection application on the real remote; `docs/governance/**` path-freeze check; coverage floors (activate with E1-T08 — `passWithNoTests` flips false at E1-T01); contract-envelope lane (first message ships); a11y lane (first surface ships); `minimum_chrome_version` floor pending ADR-047; SHA-pinning actions; `enforce_admins=true` at contributor #2.

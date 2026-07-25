@@ -1,9 +1,19 @@
 {
-  "$comment": "EES §7.3 bundle budgets (gzip KB). Tighten-only (ADR-029). Checked by scripts/bundle-check.mjs.",
+  "$comment": "EES §7.3 bundle budgets (gzip KB). Tighten-only (ADR-029). Checked by scripts/bundle-check.mjs. Audit P1-G15 ratchet: required:true budgets FAIL when they match zero files (an entrypoint rename cannot silently retire a budget); required:false budgets that start matching files FAIL until flipped true (the flip rides with the PR that ships the entry).",
   "entries": [
-    { "name": "background (core SW)", "glob": "(background)", "maxGzipKB": 300 },
-    { "name": "quiet-page", "glob": "(quiet)", "maxGzipKB": 150 },
-    { "name": "overlay+guardian", "glob": "(overlay|guardian)", "maxGzipKB": 80 },
-    { "name": "importers exporters", "glob": "(import|export)", "maxGzipKB": 120 }
+    { "name": "background (core SW)", "glob": "(background)", "maxGzipKB": 300, "required": true },
+    { "name": "quiet-page", "glob": "(quiet)", "maxGzipKB": 150, "required": true },
+    {
+      "name": "overlay+guardian",
+      "glob": "(overlay|guardian)",
+      "maxGzipKB": 80,
+      "required": false
+    },
+    {
+      "name": "importers exporters",
+      "glob": "(import|export)",
+      "maxGzipKB": 120,
+      "required": false
+    }
   ]
 }

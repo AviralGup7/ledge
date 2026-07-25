@@ -1,0 +1,19 @@
+{
+  "$comment": "ADR-022 signed manifest baseline (audit P1-G5). Guarded by scripts/manifest-guard.mjs, wired as pnpm check:manifest. Any field change requires an ADR + this baseline updated in the same PR. null = the field must remain ABSENT from the built manifest. minimum_chrome_version is intentionally null pending the ADR-047 floor decision.",
+  "permissions": [
+    "tabs",
+    "tabGroups",
+    "sessions",
+    "storage",
+    "unlimitedStorage",
+    "alarms",
+    "offscreen",
+    "favicon",
+    "contextMenus"
+  ],
+  "optional_permissions": [],
+  "host_permissions": null,
+  "externally_connectable": null,
+  "minimum_chrome_version": null,
+  "content_security_policy.extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'none'; base-uri 'none'"
+}

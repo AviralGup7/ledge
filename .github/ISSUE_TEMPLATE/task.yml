@@ -1,11 +1,11 @@
 name: Engineering Task
 description: A roadmap-derived unit of work (E#-T##)
-title: "[E?-T??] "
-labels: ["type:task"]
+title: '[E?-T??] '
+labels: ['type:task']
 body:
   - type: input
     id: taskid
-    attributes: { label: Task ID, placeholder: "E2-T02" }
+    attributes: { label: Task ID, placeholder: 'E2-T02' }
     validations: { required: true }
   - type: textarea
     id: purpose

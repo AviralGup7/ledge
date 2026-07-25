@@ -1,4 +1,4 @@
-name: PR Gate (Constitution §11: main is always releasable)
+name: 'PR Gate (Constitution §11: main is always releasable)'
 on:
   pull_request:
   push:
@@ -24,6 +24,8 @@ jobs:
         run: pnpm check:deps
       - name: Calm-copy lint (Principle 22)
         run: pnpm check:copy
+      - name: Error map complete (EES §3.2, E1-T08)
+        run: pnpm check:errors
       - name: Dependency policy D-01 (<=5 runtime deps, quarantine)
         run: pnpm check:dep-policy
       - name: Typecheck
@@ -42,6 +44,11 @@ jobs:
       - name: Property (T-03; 1000 seeds PR lane)
         run: pnpm test:property
         env: { FC_NUM_RUNS: 1000 }
+      - name: Contract (ADR-032; identical suite per adapter)
+        run: pnpm test:contract
+      - name: Security (EES §8; boundary validator fuzz)
+        run: pnpm test:security
+        env: { FC_NUM_RUNS: 1000 }
   build-and-guards:
     runs-on: ubuntu-latest
     steps:
@@ -55,8 +62,10 @@ jobs:
         run: pnpm build
       - name: Bundle budgets (EES §7.3)
         run: pnpm check:bundle
-      - name: Egress guard (A-10: network allowlist = empty set)
+      - name: 'Egress guard (A-10: network allowlist = empty set)'
         run: pnpm check:egress
+      - name: Manifest integrity (ADR-022 signed baseline)
+        run: pnpm check:manifest
   supply-chain:
     runs-on: ubuntu-latest
     steps:

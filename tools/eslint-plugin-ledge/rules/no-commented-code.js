@@ -5,7 +5,11 @@ const CODE_PATTERNS = [
   /[{};]\s*$/m,
 ];
 export default {
-  meta: { type: 'problem', messages: { commented: 'Commented-out code detected — delete it. History remembers.' }, schema: [] },
+  meta: {
+    type: 'problem',
+    messages: { commented: 'Commented-out code detected — delete it. History remembers.' },
+    schema: [],
+  },
   create(context) {
     const source = context.sourceCode;
     return {

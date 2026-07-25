@@ -12,7 +12,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version-file: .nvmrc, cache: pnpm }
       - run: pnpm install --frozen-lockfile
-      - name: FULL gate (Constitution: releases never skip gates; hotfix law is the only expedited path and still runs these)
+      - name: 'FULL gate (Constitution: releases never skip gates; hotfix law is the only expedited path and still runs these)'
         run: pnpm ci:all
       - name: Package artifact
         run: pnpm zip

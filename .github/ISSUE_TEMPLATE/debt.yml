@@ -1,7 +1,7 @@
 name: Technical Debt (DEBT register)
 description: Constitution §10 — unregistered debt is negligence
-title: "[DEBT-###] "
-labels: ["type:debt"]
+title: '[DEBT-###] '
+labels: ['type:debt']
 body:
   - type: textarea
     id: why

@@ -13,15 +13,15 @@ export default defineConfig({
     // ADR-022 — this array is a trust artifact. Adding an entry requires an ADR + manifest diff sign-off.
     // Justifications: docs/permissions.md.
     permissions: [
-      'tabs',              // see and keep tab titles/addresses so they can be restored
-      'tabGroups',         // keep your group structure
-      'sessions',          // recover after a crash
-      'storage',           // your archive lives on your device
-      'unlimitedStorage',  // so your archive never runs out of space
-      'alarms',            // maintenance on schedule
-      'offscreen',         // heavy lifting without slowing your browsing
-      'favicon',           // show site icons
-      'contextMenus',      // park from right-click
+      'tabs', // see and keep tab titles/addresses so they can be restored
+      'tabGroups', // keep your group structure
+      'sessions', // recover after a crash
+      'storage', // your archive lives on your device
+      'unlimitedStorage', // so your archive never runs out of space
+      'alarms', // maintenance on schedule
+      'offscreen', // heavy lifting without slowing your browsing
+      'favicon', // show site icons
+      'contextMenus', // park from right-click
     ],
     // FORBIDDEN BY LAW (S-06 / ADR-022): notifications, downloads, cookies, history, host permissions, scripting.
     optional_permissions: [],

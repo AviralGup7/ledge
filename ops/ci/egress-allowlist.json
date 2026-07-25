@@ -1,9 +1,20 @@
 {
-  "$comment": "A-10: the v1 egress table is EMPTY. Anything matching a URL in build output must appear here with an ADR reference, or the build fails.",
+  "$comment": "A-10: the v1 egress table is EMPTY. Anything matching a URL in build output must appear here with an ADR reference, or the build fails. Audit P1-G4: every pattern is start-anchored AND end-terminated ($ | / | ? | #) — lookalike suffixes (evil twins) do not pass.",
   "allowed": [
-    { "pattern": "^https?://(localhost|127\\.0\\.0\\.1)(:\\d+)?", "adr": "dev-only" },
-    { "pattern": "^https?://www\\.w3\\.org/", "adr": "SVG namespaces in markup" },
-    { "pattern": "^https?://chrome\\.google\\.com", "adr": "help links" },
-    { "pattern": "^https?://github\\.com/AviralGup7/ledge", "adr": "self-links in docs UI" }
+    { "pattern": "^https?://(localhost|127\\.0\\.0\\.1)(:\\d+)?($|/)", "adr": "dev-only" },
+    { "pattern": "^https?://www\\.w3\\.org($|/)", "adr": "SVG namespaces in markup" },
+    { "pattern": "^https?://chrome\\.google\\.com($|[/?#])", "adr": "help links" },
+    {
+      "pattern": "^https?://github\\.com/AviralGup7/ledge($|[/?#])",
+      "adr": "self-links in docs UI"
+    },
+    {
+      "pattern": "^https://tinyurl\\.com/y2uuvskb$",
+      "adr": "ADR-013: Dexie-vendored error-message literal (MissingAPI help text) — inert string data, never fetched"
+    },
+    {
+      "pattern": "^http://bit\\.ly/2kdckMn$",
+      "adr": "ADR-013: Dexie-vendored error-message literal (PrematureCommit help text) — inert string data, never fetched"
+    }
   ]
 }

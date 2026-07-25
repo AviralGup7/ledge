@@ -1,7 +1,7 @@
 name: Bug / Regression
-description: Test-first law (T-01): fix ships with a failing seed
-title: "[bug] "
-labels: ["type:bug"]
+description: 'Test-first law (T-01): fix ships with a failing seed'
+title: '[bug] '
+labels: ['type:bug']
 body:
   - type: textarea
     id: happened
