@@ -1,0 +1,33 @@
+{
+  "$comment": "E1-T06 golden corpus (EES §2.3/§13). Locked semantics: ADR-016. Add cases only; correct mistakes by appending superseding cases, never by editing history.",
+  "cases": [
+    { "raw": "https://example.com/", "canonForm": "https://example.com", "schemeOk": true, "domain": "example.com", "note": "bare trailing slash normalized" },
+    { "raw": "https://example.com", "canonForm": "https://example.com", "schemeOk": true, "domain": "example.com", "note": "already bare" },
+    { "raw": "https://example.com/a/", "canonForm": "https://example.com/a/", "schemeOk": true, "domain": "example.com", "note": "non-bare trailing slash preserved (conservative)" },
+    { "raw": "HTTP://EXAMPLE.COM/Path", "canonForm": "http://example.com/Path", "schemeOk": true, "domain": "example.com", "note": "scheme/host lowercase, path case preserved" },
+    { "raw": "http://example.com:80/a", "canonForm": "http://example.com/a", "schemeOk": true, "domain": "example.com", "note": "default port 80 stripped" },
+    { "raw": "https://example.com:443/a", "canonForm": "https://example.com/a", "schemeOk": true, "domain": "example.com", "note": "default port 443 stripped" },
+    { "raw": "https://example.com:8080/a", "canonForm": "https://example.com:8080/a", "schemeOk": true, "domain": "example.com", "note": "non-default port kept" },
+    { "raw": "https://example.com/a?utm_source=news&b=2&utm_medium=x", "canonForm": "https://example.com/a?b=2", "schemeOk": true, "domain": "example.com", "note": "utm_* family stripped, order of survivors preserved" },
+    { "raw": "https://example.com/a?fbclid=zzz", "canonForm": "https://example.com/a", "schemeOk": true, "domain": "example.com", "note": "fbclid exact-name strip; no dangling '?'" },
+    { "raw": "https://example.com/a?gclid=1&UTM_CAMPAIGN=sale&b=2", "canonForm": "https://example.com/a?b=2", "schemeOk": true, "domain": "example.com", "note": "deny compare is case-insensitive" },
+    { "raw": "https://example.com/a?b=1&b=2", "canonForm": "https://example.com/a?b=1&b=2", "schemeOk": true, "domain": "example.com", "note": "duplicate params kept verbatim (conservative)" },
+    { "raw": "https://example.com/a?x=%2F%3F", "canonForm": "https://example.com/a?x=%2F%3F", "schemeOk": true, "domain": "example.com", "note": "encodings preserved verbatim" },
+    { "raw": "https://example.com/app#/route/1", "canonForm": "https://example.com/app#/route/1", "schemeOk": true, "domain": "example.com", "note": "fragment preserved (distinct routes merge-protected)" },
+    { "raw": "https://example.com/app#/route/2", "canonForm": "https://example.com/app#/route/2", "schemeOk": true, "domain": "example.com", "note": "fragment-sensitive distinctness" },
+    { "raw": "https://example.com/app#section?utm_source=x", "canonForm": "https://example.com/app#section?utm_source=x", "schemeOk": true, "domain": "example.com", "note": "utm inside fragment is NOT stripped (it is not a query param)" },
+    { "raw": "https://user:pw@example.com/a", "canonForm": "https://user:pw@example.com/a", "schemeOk": true, "domain": "example.com", "note": "userinfo preserved (conservative; rare but distinct identity)" },
+    { "raw": "https://www.example.com/a", "canonForm": "https://www.example.com/a", "schemeOk": true, "domain": "www.example.com", "note": "www NOT stripped (conservative; would merge distinct sites)" },
+    { "raw": "https://bücher.de/a", "canonForm": "https://xn--bcher-kva.de/a", "schemeOk": true, "domain": "xn--bcher-kva.de", "note": "IDN → punycode via platform parser" },
+    { "raw": "javascript:alert(1)", "schemeOk": false, "note": "scheme allowlist http/https only" },
+    { "raw": "data:text/html,<h1>", "schemeOk": false, "note": "data: excluded" },
+    { "raw": "chrome://extensions", "schemeOk": false, "note": "chrome: excluded" },
+    { "raw": "file:///etc/passwd", "schemeOk": false, "note": "file: excluded" },
+    { "raw": "ftp://example.com/a", "schemeOk": false, "note": "ftp excluded" },
+    { "raw": "not a url", "schemeOk": false, "note": "unparsable → exact-match fallback, never throws" },
+    { "raw": "https://", "schemeOk": false, "note": "host missing → fallback" },
+    { "raw": "https://example.com/a#", "canonForm": "https://example.com/a", "schemeOk": true, "domain": "example.com", "note": "empty fragment drops its marker (platform-normalized)" },
+    { "raw": "https://user2@example.com/a", "canonForm": "https://user2@example.com/a", "schemeOk": true, "domain": "example.com", "note": "username-only credentials preserved" },
+    { "raw": "https://user:pw@example.com:443/a", "canonForm": "https://user:pw@example.com/a", "schemeOk": true, "domain": "example.com", "note": "userinfo + default port (regression: origin drops credentials)" }
+  ]
+}

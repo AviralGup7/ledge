@@ -1,0 +1,129 @@
+{
+  "$comment": "E1-T07 golden fixtures (EES §2.4: chain must upcast any v1 event to current, tested by golden fixtures). Envelopes are hand-authored v1 stored events; 'expect' declares the upcast outcome.",
+  "fixtures": [
+    {
+      "name": "TabObserved minimal valid",
+      "expect": "current",
+      "stored": {
+        "v": 1,
+        "event": {
+          "eventId": "01J2C0N0000000000000000001",
+          "hlc": { "seq": 41, "lamport": 38, "deviceId": "0DEV0000000000000000000000", "wallClock": 1721800000000 },
+          "type": "TabObserved",
+          "payload": {
+            "ledgeTabId": "01J2C0N0000000000000000002",
+            "browserTabId": 101,
+            "windowId": 7,
+            "url": "https://example.com/a?utm_source=news",
+            "urlCanon": "https://example.com/a",
+            "canonRulesV": 1,
+            "title": "Example",
+            "domain": "example.com",
+            "ts": 1721800000000
+          },
+          "producerContext": "sw"
+        }
+      }
+    },
+    {
+      "name": "TabUpdated valid (record changes, forward-tolerant extra field preserved)",
+      "expect": "current",
+      "stored": {
+        "v": 1,
+        "event": {
+          "eventId": "01J2C0N0000000000000000003",
+          "hlc": { "seq": 42, "lamport": 39, "deviceId": "0DEV0000000000000000000000", "wallClock": 1721800001000 },
+          "type": "TabUpdated",
+          "payload": { "ledgeTabId": "01J2C0N0000000000000000002", "changes": { "title": "New title" }, "futureFieldV2": { "anything": true } },
+          "producerContext": "sw"
+        }
+      }
+    },
+    {
+      "name": "TabsParked terminal-for-intent valid",
+      "expect": "current",
+      "stored": {
+        "v": 1,
+        "event": {
+          "eventId": "01J2C0N0000000000000000004",
+          "hlc": { "seq": 77, "lamport": 71, "deviceId": "0DEV0000000000000000000000", "wallClock": 1721800005000 },
+          "type": "TabsParked",
+          "payload": { "intentId": "01J2C0N0000000000000000005", "secured": 14 },
+          "producerContext": "sw",
+          "idempotencyKey": "01J2C0N0000000000000000005"
+        }
+      }
+    },
+    {
+      "name": "EntityTrashed valid (inverse atom embedded — undo law)",
+      "expect": "current",
+      "stored": {
+        "v": 1,
+        "event": {
+          "eventId": "01J2C0N0000000000000000006",
+          "hlc": { "seq": 90, "lamport": 84, "deviceId": "0DEV0000000000000000000000", "wallClock": 1721800009000 },
+          "type": "EntityTrashed",
+          "payload": { "kind": "tab", "id": "01J2C0N0000000000000000002", "inverseAtom": { "restoreTo": "mission/01J2C0N0000000000000000007", "position": 3 }, "deletedAt": 1721800009000 },
+          "producerContext": "sw"
+        }
+      }
+    },
+    {
+      "name": "ImportCommitted valid (single inverse via batchId)",
+      "expect": "current",
+      "stored": {
+        "v": 1,
+        "event": {
+          "eventId": "01J2C0N0000000000000000008",
+          "hlc": { "seq": 120, "lamport": 110, "deviceId": "0DEV0000000000000000000000", "wallClock": 1721800012000 },
+          "type": "ImportCommitted",
+          "payload": { "batchId": "01J2C0N0000000000000000009", "batchManifestRef": { "counts": 512, "idsRange": [40, 552] }, "source": "chrome-bookmarks", "dupesMode": "skip", "canonRulesV": 1 },
+          "producerContext": "sw"
+        }
+      }
+    },
+    {
+      "name": "unknown type → preserved passthrough (never dropped silently)",
+      "expect": "preserved-unknown",
+      "stored": {
+        "v": 1,
+        "event": {
+          "eventId": "01J2C0N000000000000000000A",
+          "hlc": { "seq": 121, "lamport": 111, "deviceId": "0DEV0000000000000000000000", "wallClock": 1721800013000 },
+          "type": "TotallyFutureEvent",
+          "payload": { "whatever": [1, 2, 3] },
+          "producerContext": "sw"
+        }
+      }
+    },
+    {
+      "name": "future version of a known type → preserved passthrough (skew window)",
+      "expect": "preserved-unknown",
+      "stored": {
+        "v": 2,
+        "event": {
+          "eventId": "01J2C0N000000000000000000B",
+          "hlc": { "seq": 122, "lamport": 112, "deviceId": "0DEV0000000000000000000000", "wallClock": 1721800014000 },
+          "type": "TabObserved",
+          "payload": { "ledgeTabId": "01J2C0N0000000000000000002", "browserTabId": 101, "windowId": 7, "url": "https://example.com/a", "urlCanon": "https://example.com/a", "canonRulesV": 2, "title": "Example", "domain": "example.com", "ts": 1721800014000 },
+          "producerContext": "sw"
+        }
+      }
+    },
+    {
+      "name": "missing required field → E_OUTPUT_MALFORMED (never projected)",
+      "expect": "error",
+      "errorCode": "E_OUTPUT_MALFORMED",
+      "stored": {
+        "v": 1,
+        "event": {
+          "eventId": "01J2C0N000000000000000000C",
+          "hlc": { "seq": 123, "lamport": 113, "deviceId": "0DEV0000000000000000000000", "wallClock": 1721800015000 },
+          "type": "TabObserved",
+          "payload": { "ledgeTabId": "01J2C0N0000000000000000002" },
+          "producerContext": "sw"
+        }
+      }
+    }
+  ]
+}
