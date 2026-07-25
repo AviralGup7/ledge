@@ -15,7 +15,9 @@ import {
   decideTrashRestore,
   decideUndo,
 } from './transitions.js';
+import type { Decision, PlannedEvent } from './transitions.js';
 import { DEFAULT_LIFECYCLE_POLICY, policyOf, trashRetentionMsOf } from './policies/retention.js';
+import { isKnownEventType, validatePayload } from '@/shared-kernel/events/validate.js';
 
 const BULK = DEFAULT_LIFECYCLE_POLICY.bulkConfirmThreshold;
 
@@ -25,6 +27,7 @@ describe('invariant (i) — snapshot plan precedes intent acceptance', () => {
       tabIds: ['t1'],
       groupStyles: [],
       snapshotId: undefined,
+      intentId: 'i1',
       issuedAt: 1,
     });
     expect(bad.allowed).toBe(false);
@@ -32,34 +35,62 @@ describe('invariant (i) — snapshot plan precedes intent acceptance', () => {
       tabIds: ['t1', 't2'],
       groupStyles: [],
       snapshotId: 's1',
+      intentId: 'i1',
       issuedAt: 1,
     });
     expect(good.allowed).toBe(true);
     if (good.allowed) {
       expect(good.events[0]?.type).toBe('ParkIntentAccepted');
+      expect(good.events[0]?.payload).toMatchObject({ intentId: 'i1' });
       expect(JSON.stringify(good.events[0]?.payload)).toContain('s1');
     }
   });
-  it('empty park scope refuses', () => {
-    const d = decideParkPlan({ tabIds: [], groupStyles: [], snapshotId: 's1', issuedAt: 1 });
-    expect(d.allowed).toBe(false);
+  it('empty park scope refuses; idless intent refuses', () => {
+    const base = { tabIds: [] as string[], groupStyles: [], snapshotId: 's1', issuedAt: 1 };
+    expect(decideParkPlan({ ...base, intentId: 'i1' }).allowed).toBe(false);
+    expect(decideParkPlan({ ...base, tabIds: ['t1'], intentId: '' }).allowed).toBe(false);
   });
 });
 
 describe('invariant (ii) — system deletion of KEPT content is unreachable', () => {
   it('purge decider refuses every non-trash state (no code path exists)', () => {
     for (const state of ['live', 'kept', 'parked', 'archived', 'unknown']) {
-      const d = decidePurgeSubject(state);
+      const d = decidePurgeSubject({
+        subject: { kind: 'tab', id: 't1' },
+        state,
+        purgeEpoch: 3,
+        now: 7,
+      });
       expect(d.allowed).toBe(false);
     }
-    expect(decidePurgeSubject('trash').allowed).toBe(true);
-  });
-  it('empty-trash composes purge only over the trash set and requires exact confirm', () => {
-    expect(decideEmptyTrash({ confirm: 'yes', trashEntryCount: 3, now: 7 }).allowed).toBe(false);
-    expect(decideEmptyTrash({ confirm: true, trashEntryCount: 0, now: 7 }).allowed).toBe(false);
-    const ok = decideEmptyTrash({ confirm: true, trashEntryCount: 3, now: 7 });
+    const ok = decidePurgeSubject({
+      subject: { kind: 'tab', id: 't1' },
+      state: 'trash',
+      purgeEpoch: 3,
+      now: 7,
+    });
     expect(ok.allowed).toBe(true);
-    if (ok.allowed) expect(ok.events[0]?.type).toBe('TrashPurged');
+    if (ok.allowed)
+      expect(ok.events[0]?.payload).toMatchObject({ kind: 'tab', id: 't1', purgeEpoch: 3 });
+  });
+  it('empty-trash composes one TrashPurged PER ENTRY over the trash set, confirm-exact', () => {
+    const entries = [
+      { kind: 'tab' as const, id: 't1' },
+      { kind: 'mission' as const, id: 'm1' },
+    ];
+    expect(decideEmptyTrash({ confirm: 'yes', entries, purgeEpoch: 3, now: 7 }).allowed).toBe(
+      false,
+    );
+    expect(decideEmptyTrash({ confirm: true, entries: [], purgeEpoch: 3, now: 7 }).allowed).toBe(
+      false,
+    );
+    const ok = decideEmptyTrash({ confirm: true, entries, purgeEpoch: 3, now: 7 });
+    expect(ok.allowed).toBe(true);
+    if (ok.allowed) {
+      expect(ok.events).toHaveLength(2);
+      expect(ok.events.map((e) => e.type)).toEqual(['TrashPurged', 'TrashPurged']);
+      expect(ok.events[1]?.payload).toMatchObject({ kind: 'mission', id: 'm1', purgedAt: 7 });
+    }
   });
 });
 
@@ -112,7 +143,8 @@ describe('transition laws (contract validation highlights)', () => {
         missionId: 'b',
         fromMissionId: 'a',
       });
-      expect(d.events[2]?.payload).toMatchObject({ missionId: 'a', mergedInto: 'b' });
+      expect(d.events[2]?.payload).toEqual({ missionId: 'a' });
+      expect(d.inverseAtom?.payload).toMatchObject({ fromId: 'a', intoId: 'b' });
     }
   });
   it('split requires a minted id and a non-empty subset of source membership', () => {
@@ -274,5 +306,105 @@ describe('undo law + policy reader', () => {
     const again = policyOf([{ key: 'trash.retentionDays', value: 90 }]);
     expect(JSON.stringify(again)).toBe(JSON.stringify(p));
     expect(policyOf(undefined)).toBe(DEFAULT_LIFECYCLE_POLICY);
+  });
+});
+
+// ── §4 closed-world law (REGRESSION: E3 slice-C audit caught plan payloads drifting
+//    from the frozen catalog — ParkIntentAccepted without intentId, a summary-shaped
+//    TrashPurged). Every event ANY decider can plan must be a known §4 type whose
+//    payload validates against EVENT_REGISTRY field kinds, ids included. ─────────────
+describe('§4 catalog parity — every planned event validates against the frozen registry', () => {
+  // Kernel Id shape (Crockford-32, 26 chars, leading 0-7): zero-padded two-digit suffix.
+  const idOf = (n: number): string => `000000000000000000000000${String(n).padStart(2, '0')}`;
+  const decisions: { readonly label: string; readonly events: readonly PlannedEvent[] }[] = [];
+  const collect = (label: string, decision: Decision): void => {
+    expect(decision.allowed).toBe(true);
+    if (decision.allowed) decisions.push({ label, events: decision.events });
+  };
+  collect(
+    'park',
+    decideParkPlan({
+      tabIds: [idOf(1)],
+      groupStyles: [],
+      snapshotId: idOf(2),
+      intentId: idOf(3),
+      issuedAt: 1,
+    }),
+  );
+  collect('rename', decideRename(idOf(4), 'Deep Work', 'user'));
+  collect('merge', decideMerge(idOf(5), idOf(6), [idOf(7)], 'live', 'archived'));
+  collect('split', decideSplit(idOf(8), [idOf(9)], [idOf(9)], 'Focus', 'user'));
+  collect('archive', decideArchive(idOf(10), 'live'));
+  collect('conclude', decideConclude(idOf(11), 'archived', 'done'));
+  collect(
+    'trash',
+    decideTrash({
+      kind: 'tab',
+      id: idOf(12),
+      state: 'kept',
+      parentMissionId: idOf(13),
+      bulkThreshold: BULK,
+      now: 1,
+    }),
+  );
+  collect(
+    'trash-restore',
+    decideTrashRestore({
+      kind: 'tab',
+      id: idOf(14),
+      state: 'trash',
+      parentMissionId: idOf(15),
+      parentState: 'trash',
+      resolvedMissionId: idOf(16),
+      deletedAt: 0,
+      now: 1,
+      trashRetentionMs: 9_999,
+      domainName: 'example.com',
+    }),
+  );
+  collect(
+    'empty-trash',
+    decideEmptyTrash({
+      confirm: true,
+      entries: [{ kind: 'tab', id: idOf(17) }],
+      purgeEpoch: 3,
+      now: 7,
+    }),
+  );
+  collect(
+    'purge-subject',
+    decidePurgeSubject({
+      subject: { kind: 'mission', id: idOf(18) },
+      state: 'trash',
+      purgeEpoch: 3,
+      now: 7,
+    }),
+  );
+  collect(
+    'move',
+    decideMove({
+      tabIds: [idOf(19)],
+      toMissionId: idOf(20),
+      destinationState: 'live',
+      tabStates: { [idOf(19)]: 'kept' },
+      tabSources: { [idOf(19)]: idOf(21) },
+    }),
+  );
+
+  it('every decider family contributes events (coverage anchor)', () => {
+    expect(decisions.length).toBe(11);
+    expect(decisions.every((d) => d.events.length > 0)).toBe(true);
+  });
+  it('every planned event is a known §4 type with a registry-valid payload', () => {
+    for (const { label, events } of decisions) {
+      for (const planned of events) {
+        expect(isKnownEventType(planned.type), `${label}:${planned.type}`).toBe(true);
+        const checked = validatePayload(planned.type, planned.payload);
+        expect(
+          checked.ok,
+          `${label}:${planned.type} payload ${JSON.stringify(planned.payload)}`,
+        ).toBe(true);
+      }
+    }
   });
 });

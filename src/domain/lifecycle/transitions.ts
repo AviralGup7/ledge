@@ -48,6 +48,9 @@ export interface ParkPlanInput {
   readonly groupStyles: readonly unknown[];
   /** Snapshot proof: the use case MUST have materialized snapshot plans first. */
   readonly snapshotId: string | undefined;
+  /** §4 catalog law: ParkIntentAccepted carries the intent id (minted by the caller —
+   *  ids enter through inputs, never from inside the domain). */
+  readonly intentId: string;
   readonly issuedAt: number;
 }
 
@@ -55,10 +58,12 @@ export const decideParkPlan = (input: ParkPlanInput): Decision => {
   if (input.tabIds.length === 0) return refuse('park-empty-scope');
   if (input.snapshotId === undefined || input.snapshotId.length === 0)
     return refuse('park-without-snapshot-plan');
+  if (input.intentId.length === 0) return refuse('park-idless-intent');
   return allow([
     {
       type: 'ParkIntentAccepted',
       payload: {
+        intentId: input.intentId,
         scope: {
           tabIds: [...input.tabIds],
           groupStyles: [...input.groupStyles],
@@ -97,14 +102,13 @@ export const decideMerge = (
     type: 'TabMoved',
     payload: { tabId, missionId: intoId, fromMissionId: fromId },
   }));
-  return allow(
-    [...moves, { type: 'MissionArchived', payload: { missionId: fromId, mergedInto: intoId } }],
-    {
-      kind: 'split-merged',
-      payload: { fromId, intoId, tabIds: [...fromTabs] },
-      label: 'msg.undo.merged',
-    },
-  );
+  // MissionArchived stays §4-pure ({missionId} only): merge provenance rides the
+  // TabMoved.fromMissionId chain + the inverse atom, never extra payload fields.
+  return allow([...moves, { type: 'MissionArchived', payload: { missionId: fromId } }], {
+    kind: 'split-merged',
+    payload: { fromId, intoId, tabIds: [...fromTabs] },
+    label: 'msg.undo.merged',
+  });
 };
 
 /** newMissionId arrives minted (domain law: ids enter through inputs, never from inside). */
@@ -259,28 +263,51 @@ export const decideTrashRestore = (input: {
   return allow(events);
 };
 
-/** Empty-trash purge subjects are the trash set ONLY (invariant ii), confirm-exact C17. */
+/** One purge subject (trash-set member; the only legal purge feed — invariant ii). */
+export interface PurgeSubject {
+  readonly kind: 'tab' | 'mission';
+  readonly id: string;
+}
+
+/** Empty-trash composes one TrashPurged PER TRASH ENTRY (§4 catalog law: the event is
+ *  singular {kind,id,purgedAt,purgeEpoch} — the response's `purged` count derives from
+ *  event count, never from an invented payload field). Confirm-exact per C17. */
 export const decideEmptyTrash = (input: {
   readonly confirm: unknown;
-  readonly trashEntryCount: number;
+  readonly entries: readonly PurgeSubject[];
+  readonly purgeEpoch: number;
   readonly now: number;
 }): Decision => {
   if (input.confirm !== true) return refuse('empty-trash-confirm-exact');
-  if (input.trashEntryCount === 0) return refuse('empty-trash-no-entries');
-  return allow([
-    {
-      type: 'TrashPurged',
-      payload: { purgedAt: input.now, purged: input.trashEntryCount },
-    },
-  ]);
+  if (input.entries.length === 0) return refuse('empty-trash-no-entries');
+  const events: PlannedEvent[] = input.entries.map((entry) => ({
+    type: 'TrashPurged',
+    payload: { kind: entry.kind, id: entry.id, purgedAt: input.now, purgeEpoch: input.purgeEpoch },
+  }));
+  return allow(events);
 };
 
 /** Purge/condemn of a single subject (sweeper path): absolutely refuse non-trash.
  *  Invariant (ii) encoded as a refusal the sweeper calls — KEPT content has NO purge
  *  decision path anywhere in the domain. */
-export const decidePurgeSubject = (state: string): Decision => {
-  if (state !== 'trash') return refuse('purge-of-non-trash-unreachable');
-  return allow([{ type: 'TrashPurged', payload: {} }]);
+export const decidePurgeSubject = (input: {
+  readonly subject: PurgeSubject;
+  readonly state: string;
+  readonly purgeEpoch: number;
+  readonly now: number;
+}): Decision => {
+  if (input.state !== 'trash') return refuse('purge-of-non-trash-unreachable');
+  return allow([
+    {
+      type: 'TrashPurged',
+      payload: {
+        kind: input.subject.kind,
+        id: input.subject.id,
+        purgedAt: input.now,
+        purgeEpoch: input.purgeEpoch,
+      },
+    },
+  ]);
 };
 
 // ── Move (C10) + undo (C18) ───────────────────────────────────────────────────────

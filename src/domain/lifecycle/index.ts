@@ -2,7 +2,13 @@
 export type { MissionState, TabState, TrashableKind, SubjectSnapshot } from './states.js';
 export type { LifecyclePolicy } from './policies/retention.js';
 export { DEFAULT_LIFECYCLE_POLICY, policyOf, trashRetentionMsOf } from './policies/retention.js';
-export type { Decision, InverseAtom, ParkPlanInput, PlannedEvent } from './transitions.js';
+export type {
+  Decision,
+  InverseAtom,
+  ParkPlanInput,
+  PlannedEvent,
+  PurgeSubject,
+} from './transitions.js';
 export {
   decideArchive,
   decideConclude,
