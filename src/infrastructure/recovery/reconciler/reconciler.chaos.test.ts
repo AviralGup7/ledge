@@ -1,0 +1,311 @@
+// E2-T06 chaos — kill-point matrix. Completion criterion of the roadmap task:
+// EVERY point in ops/chaos/points.txt resolves correctly. Fixtures build the exact
+// durable state a kill at that boundary leaves (torn flows are assembled half-by-
+// half through the real journal + ledger), the reconciler runs over it, and the
+// assertions are the point's resolution law. Every point also proves: zero tab
+// loss accounting, second-reconcile idempotence, and BootReport presence.
+import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import {
+  acceptIntent,
+  browserTabId,
+  makeWorld,
+  missionId,
+  observeThenClose,
+  reconcile,
+  tabObserved,
+  tabsParked,
+  type ReconcileWorld,
+} from './testkit.js';
+import type { BootReport, IntentDisposition } from './types.js';
+
+const unwrap = <T, E>(r: { ok: true; value: T } | { ok: false; error: E }): T => {
+  if (!r.ok) throw new Error(`unexpected err: ${JSON.stringify(r.error)}`);
+  return r.value;
+};
+
+interface PointExpect {
+  readonly disposition: IntentDisposition | null; // null ⇒ nothing pending (clean)
+  readonly state: 'done' | 'aborted' | 'intent' | 'absent';
+}
+
+interface PointFixture {
+  readonly point: string;
+  readonly setup: (w: ReconcileWorld) => Promise<string | null>; // intentId or null
+  readonly expected: PointExpect;
+  /** Park intents: total scope refs for the zero-loss identity secured+left==refs. */
+  readonly scopeRefs?: number;
+}
+
+const parkScope = { tabIds: [browserTabId(1), browserTabId(2), browserTabId(3)] };
+
+const FIXTURES: readonly PointFixture[] = [
+  {
+    point: 'park.commit-intent.before',
+    setup: async () => null, // killed before the hinged commit — nothing durable
+    expected: { disposition: null, state: 'absent' },
+  },
+  {
+    point: 'park.commit-intent.after',
+    setup: async (w) => acceptIntent(w, 1, 'ParkAll', parkScope),
+    expected: { disposition: 'aborted-conservative', state: 'aborted' },
+    scopeRefs: 3,
+  },
+  {
+    point: 'park.browser-close.mid-batch',
+    setup: async (w) => {
+      const id = await acceptIntent(w, 1, 'ParkAll', parkScope);
+      await observeThenClose(w, [1, 2]); // 2 of 3 closes landed
+      return id;
+    },
+    expected: { disposition: 'aborted-conservative', state: 'aborted' },
+    scopeRefs: 3,
+  },
+  {
+    point: 'park.commit-completion.before',
+    setup: async (w) => {
+      const id = await acceptIntent(w, 1, 'ParkAll', parkScope);
+      await observeThenClose(w, [1, 2, 3]); // every close provable, event not yet written
+      return id;
+    },
+    expected: { disposition: 'completed-evidence', state: 'done' },
+    scopeRefs: 3,
+  },
+  {
+    point: 'park.commit-completion.after',
+    setup: async (w) => {
+      const id = await acceptIntent(w, 1, 'ParkAll', parkScope);
+      await observeThenClose(w, [1, 2, 3]);
+      await w.append([tabsParked(w, id, 3)]); // completion durable, row-flip never landed
+      return id;
+    },
+    expected: { disposition: 'completed-safe', state: 'done' },
+    scopeRefs: 3,
+  },
+  {
+    point: 'resume.intent.after',
+    setup: async (w) =>
+      acceptIntent(w, 1, 'ResumeMission', { missionId: missionId(1), mode: 'everything' }),
+    expected: { disposition: 'deferred', state: 'intent' },
+  },
+  {
+    point: 'resume.window-create.mid',
+    setup: async (w) => {
+      const id = await acceptIntent(w, 1, 'ResumeMission', {
+        missionId: missionId(1),
+        mode: 'everything',
+      });
+      await w.append([tabObserved(w, 7)]); // a tab materialized mid-resume: no proof either way
+      return id;
+    },
+    expected: { disposition: 'deferred', state: 'intent' },
+  },
+  {
+    point: 'resume.tab-create.mid-batch',
+    setup: async (w) => {
+      const id = await acceptIntent(w, 1, 'ResumeMission', {
+        missionId: missionId(1),
+        mode: 'everything',
+      });
+      await w.append([tabObserved(w, 7), tabObserved(w, 8)]);
+      return id;
+    },
+    expected: { disposition: 'deferred', state: 'intent' },
+  },
+  {
+    point: 'delete.commit.before',
+    setup: async () => null,
+    expected: { disposition: null, state: 'absent' },
+  },
+  {
+    point: 'delete.commit.after',
+    setup: async (w) => acceptIntent(w, 1, 'DeleteEntity', { kind: 'mission', id: missionId(1) }),
+    expected: { disposition: 'deferred', state: 'intent' },
+  },
+  {
+    point: 'undo.apply.mid',
+    setup: async (w) => acceptIntent(w, 1, 'Undo', { actionId: 'a1' }),
+    expected: { disposition: 'deferred', state: 'intent' },
+  },
+  {
+    point: 'import.commit.chunk-mid',
+    setup: async (w) => acceptIntent(w, 1, 'ImportCommit', { importId: 'imp-1', chunk: 3 }),
+    expected: { disposition: 'deferred', state: 'intent' },
+  },
+  {
+    point: 'import.commit.before-final-marker',
+    setup: async (w) =>
+      acceptIntent(w, 1, 'ImportCommit', { importId: 'imp-1', chunk: 5, final: false }),
+    expected: { disposition: 'deferred', state: 'intent' },
+  },
+  {
+    point: 'trash.sweep.mid',
+    setup: async (w) => acceptIntent(w, 1, 'EmptyTrash', { olderThanDays: 30 }),
+    expected: { disposition: 'deferred', state: 'intent' },
+  },
+  {
+    point: 'archive.conclude.mid.artifact-write',
+    setup: async (w) => acceptIntent(w, 1, 'ConcludeMission', { missionId: missionId(1) }),
+    expected: { disposition: 'deferred', state: 'intent' },
+  },
+];
+
+/** Every enumerated point must exist in ops/chaos/points.txt (PR-template law). */
+const pointsFile = (): string[] =>
+  readFileSync(new URL('../../../../ops/chaos/points.txt', import.meta.url), 'utf8')
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0 && !l.startsWith('#'));
+
+describe('E2-T06 chaos — kill-point matrix (ops/chaos/points.txt)', () => {
+  it('fixture coverage spans the whole kill-point file', () => {
+    const covered = new Set(FIXTURES.map((f) => f.point));
+    for (const point of pointsFile()) {
+      expect(covered.has(point), `kill point ${point} lacks a reconciliation fixture`).toBe(true);
+    }
+    expect(FIXTURES).toHaveLength(pointsFile().length);
+  });
+
+  for (const fixture of FIXTURES) {
+    it(`${fixture.point} ⇒ ${fixture.expected.disposition ?? 'clean'}`, async () => {
+      const w = await makeWorld();
+      const id = await fixture.setup(w);
+      const fixtureEvents = (await w.readAll()).length;
+
+      const report = unwrap(await reconcile(w));
+      expect(report.schemaV).toBe(1);
+
+      if (fixture.expected.disposition === null) {
+        expect(report.outcome).toBe('clean');
+        expect(report.lossRisk).toBe(false);
+        expect(report.resolutions).toEqual([]);
+        expect((await w.readAll()).length).toBe(fixtureEvents);
+      } else {
+        expect(report.outcome).toBe('reconciled');
+        const resolutions = report.resolutions.filter((r) => r.intentId === id);
+        expect(resolutions).toHaveLength(1);
+        const [res] = resolutions;
+        expect(res?.disposition).toBe(fixture.expected.disposition);
+        const row = await w.row(id as never);
+        expect(row.state).toBe(fixture.expected.state);
+
+        // Zero tab loss law (park points), disposition-exact:
+        //  - completed-evidence:            secured == refs (each counted once), 0 left.
+        //  - aborted-conservative (partial): secured + liveLeftOpen == refs.
+        //  - completed-safe:                row reflects the durable already-counted
+        //    completion (counting happened pre-crash); 0 newly secured, 0 left.
+        if (fixture.scopeRefs !== undefined && res !== undefined) {
+          if (res.disposition === 'completed-evidence') {
+            expect(res.securedCounted).toBe(fixture.scopeRefs);
+            expect(res.liveLeftOpen).toBe(0);
+          }
+          if (res.disposition === 'aborted-conservative') {
+            expect(res.evidenceTabs.length + res.liveLeftOpen).toBe(fixture.scopeRefs);
+            // Partial branch: SOMETHING closed externally, SOMETHING left open —
+            // and the union is exactly the scope (no foreign tabs, no double count).
+            if (fixture.point.includes('mid-batch')) {
+              expect(res.evidenceTabs.length).toBeGreaterThan(0);
+              expect(res.liveLeftOpen).toBeGreaterThan(0);
+            }
+          }
+          if (res.disposition === 'completed-safe') {
+            expect(res.securedCounted).toBe(0);
+            expect(res.liveLeftOpen).toBe(0);
+          }
+          if (res.disposition === 'deferred') {
+            expect(res.securedCounted).toBe(0);
+            expect(res.liveLeftOpen).toBe(0);
+          }
+        }
+        // Deferred points: nothing written for the intent, row untouched.
+        if (res?.disposition === 'deferred') {
+          expect(row.retryCount).toBeGreaterThanOrEqual(1);
+          expect(report.lossRisk).toBe(true);
+        }
+        // Conservative boundary: partial evidence NEVER completes.
+        if (fixture.point.endsWith('mid-batch') || fixture.point.endsWith('.mid')) {
+          expect(res?.disposition).not.toBe('completed-evidence');
+          expect(res?.disposition).not.toBe('completed-safe');
+        }
+      }
+
+      // Idempotence law at EVERY point: a second boot changes nothing.
+      const settled = (await w.readAll()).length;
+      const again = unwrap(await reconcile(w));
+      expect(
+        again.resolutions.filter((r) => r.intentId === id && r.disposition !== 'deferred'),
+      ).toEqual([]);
+      expect((await w.readAll()).length).toBe(settled);
+    });
+  }
+
+  it('mixed wreckage: torn-complete + partial-park + delete + resume resolve independently in one boot', async () => {
+    const w = await makeWorld();
+    // torn park complete
+    const torn = await acceptIntent(w, 1, 'ParkTab', { tabIds: [browserTabId(1)] });
+    await observeThenClose(w, [1]);
+    await w.append([tabsParked(w, torn, 1)]);
+    // partial park
+    const partial = await acceptIntent(w, 2, 'ParkAll', {
+      tabIds: [browserTabId(2), browserTabId(3)],
+    });
+    await observeThenClose(w, [2]);
+    // delete pending
+    const del = await acceptIntent(w, 3, 'DeleteEntity', { kind: 'mission', id: missionId(1) });
+    // resume pending
+    const res = await acceptIntent(w, 4, 'ResumeMission', {
+      missionId: missionId(2),
+      mode: 'partial',
+    });
+
+    const report = unwrap(await reconcile(w));
+    expect(report.outcome).toBe('reconciled');
+    expect(report.intentsExamined).toBe(4);
+    const by = new Map(report.resolutions.map((r) => [r.intentId, r.disposition]));
+    expect(by.get(torn)).toBe('completed-safe');
+    expect(by.get(partial)).toBe('aborted-conservative');
+    expect(by.get(del)).toBe('deferred');
+    expect(by.get(res)).toBe('deferred');
+    expect(report.lossRisk).toBe(true);
+
+    // Ledger converged exactly as dispositioned; rows for deferred stay pending.
+    expect((await w.row(torn)).state).toBe('done');
+    expect((await w.row(partial)).state).toBe('aborted');
+    expect((await w.row(del)).state).toBe('intent');
+    expect((await w.row(res)).state).toBe('intent');
+
+    // Stream head is exactly: fixture events + 1 restamp + 1 abort (deferreds write 0).
+    const types = (await w.readAll()).map((e) => e.envelope.type);
+    expect(types.filter((t) => t === 'TabsParked')).toHaveLength(2); // durable + restamp
+    expect(types.filter((t) => t === 'ParkAborted')).toHaveLength(1);
+    // Second boot converges nothing further.
+    const again = unwrap(await reconcile(w));
+    expect(again.outcome).toBe('reconciled'); // deferred intents still pending ⇒ examined
+    expect(again.resolutions.every((r) => r.disposition === 'deferred')).toBe(true);
+  });
+});
+
+// Report-shape guard copied into every point implicitly via unwrap — the report
+// is the §14.4 contract surface, so its invariants get one direct test.
+describe('E2-T06 — BootReport contract (v1)', () => {
+  it('report envelope is stable: schemaV + gating fields + gaps always populated', async () => {
+    const w = await makeWorld();
+    const report: BootReport = unwrap(await reconcile(w));
+    expect(Object.keys(report).sort()).toEqual(
+      [
+        'bootTs',
+        'crossCheck',
+        'deviceId',
+        'evidence',
+        'gaps',
+        'intentsExamined',
+        'journalProbe',
+        'lossRisk',
+        'outcome',
+        'projections',
+        'resolutions',
+        'schemaV',
+      ].sort(),
+    );
+  });
+});
