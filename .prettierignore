@@ -7,3 +7,6 @@ pnpm-lock.yaml
 # E2-T09: generated evidence artifacts — the evidence serializer (ops/chaos/evidence.ts)
 # OWNS the byte format (golden-equality gate; prettier must not re-canonicalize).
 ops/chaos/evidence/*.json
+# E7-T02: the recorded baseline is a serializer-owned data artifact (same class as
+# the chaos golden evidence above); prettier must not re-canonicalize it.
+ops/tests/perf/baselines/*.json

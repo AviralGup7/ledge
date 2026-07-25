@@ -23,5 +23,12 @@
     }
   },
   "//": "include REPLACES the extended .wxt/tsconfig.json include — .wxt/**/*.d.ts MUST stay listed or WXT ambient types (defineBackground et al.) silently vanish (audit P0-4).",
-  "include": ["src/**/*", "entrypoints/**/*", "ops/tests/**/*", "tools/**/*", ".wxt/**/*.d.ts"]
+  "include": [
+    "src/**/*",
+    "entrypoints/**/*",
+    "ops/tests/**/*",
+    "ops/perf/**/*",
+    "tools/**/*",
+    ".wxt/**/*.d.ts"
+  ]
 }

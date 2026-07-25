@@ -6,6 +6,9 @@ dist/
 .DS_Store
 coverage/
 .turbo/
+# E7-T02: perf run artifacts are CI-upload outputs, never source (baselines ARE committed).
+ops/perf/out/
+
 # secrets — never commit (S-05)
 .env
 .env.*

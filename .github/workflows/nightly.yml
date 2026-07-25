@@ -28,11 +28,25 @@ jobs:
       - name: Chaos lane (points.txt automated, 0-loss gate, evidence reproducible)
         run: pnpm test:chaos
   perf-harness:
+    # E7-T02 · EES §8 perf gate ("nightly; release-gating") · M1 exit row.
+    # Budget gates carry literal EES §7.1 numbers; regression compare runs against
+    # the committed baseline (ops/tests/perf/baselines/). Report artifacts upload.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Perf harness placeholder (activates with E7-T02 at M1 gate)
-        run: echo "Perf harness ships with E7-T02; this job turns itself on when ops/tests/perf/harness exists."
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version-file: .nvmrc, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: Perf harness (budget gates §7.1 · baseline regression compare R-10)
+        run: pnpm test:perf
+      - name: Upload perf report artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-report
+          path: ops/perf/out/
+          retention-days: 7
   hygiene-report:
     runs-on: ubuntu-latest
     steps:

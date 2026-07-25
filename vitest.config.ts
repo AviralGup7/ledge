@@ -101,6 +101,25 @@ export default defineConfig({
           setupFiles: ['ops/tests/property/setup.ts'], // fuzz volume follows FC_NUM_RUNS too
         },
       },
+      {
+        resolve: projectResolve,
+        test: {
+          // E7-T02 · EES §8 perf lane (nightly + release-gating, never PR): budget
+          // gates §7.1, baseline regression compare (R-10), scaling law. Forks pool +
+          // serialized files keep wall-clock honest; --expose-gc separates peak from
+          // steady-state memory rows.
+          name: 'perf',
+          include: ['ops/tests/perf/**/*.test.ts'],
+          pool: 'forks',
+          poolOptions: {
+            forks: {
+              singleFork: true,
+              execArgv: ['--expose-gc'],
+            },
+          },
+          fileParallelism: false,
+        },
+      },
     ],
   },
 });

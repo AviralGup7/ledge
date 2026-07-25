@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "license": "UNLICENSED",
-  "description": "Ledge — an AI-powered tab & session manager. Never lose a thought.",
+  "description": "Ledge \u2014 an AI-powered tab & session manager. Never lose a thought.",
   "author": "Aviral Gupta <f20240294@pilani.bits-pilani.ac.in>",
   "repository": {
     "type": "git",
@@ -38,7 +38,9 @@
     "test:security": "vitest run --project security",
     "ci:all": "pnpm lint:format && pnpm lint && pnpm typecheck && pnpm check:deps && pnpm check:copy && pnpm check:errors && pnpm test && pnpm test:chaos && pnpm test:property && pnpm test:contract && pnpm test:security && pnpm build && pnpm check:bundle && pnpm check:egress && pnpm check:manifest && pnpm check:dep-policy",
     "test:chaos": "vitest run --project chaos",
-    "test:chaos:evidence": "UPDATE_EVIDENCE=1 vitest run --project chaos ops/tests/chaos"
+    "test:chaos:evidence": "UPDATE_EVIDENCE=1 vitest run --project chaos ops/tests/chaos",
+    "test:perf": "vitest run --project perf",
+    "test:perf:update": "PERF_UPDATE_BASELINE=1 vitest run --project perf"
   },
   "dependencies": {
     "dexie": "^4.0.11"
