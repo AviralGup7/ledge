@@ -13,7 +13,7 @@ import type { DeviceId } from '@/shared-kernel/identity/device-id.js';
 import type { LedgeError, Result } from '@/shared-kernel/result/index.js';
 
 /** v1 view surface (register per view; grows as use-cases land E3+). */
-export type ViewName = 'missions' | 'recentlyClosed';
+export type ViewName = 'missions' | 'recentlyClosed' | 'sessions';
 
 /** §2.10 watermark: highest APPLIED (seq, batchIndex) per (view, device). */
 export type Watermark = {

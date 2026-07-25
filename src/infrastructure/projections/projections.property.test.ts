@@ -70,18 +70,29 @@ const snapshotPair = async (h: ProjectionHarness): Promise<string> =>
   stableStringify({
     missions: await storeSnapshot(h, 'missions'),
     recently_closed: await storeSnapshot(h, 'recently_closed'),
+    sessions: await storeSnapshot(h, 'sessions'), // E2-T08: third v1 view
   });
 
 /** Replay one delta stream onto empty shelves (§3.5 faithfulness harness). */
 const replayFrames = (frames: readonly ViewDeltaFrame[]): string => {
-  const stores: Record<'missions' | 'recently_closed', Map<string, Record<string, unknown>>> = {
+  const stores: Record<
+    'missions' | 'recently_closed' | 'sessions',
+    Map<string, Record<string, unknown>>
+  > = {
     missions: new Map(),
     recently_closed: new Map(),
+    sessions: new Map(),
   };
-  const pkOf = (view: 'missions' | 'recentlyClosed'): string =>
+  const shelfOf = (view: 'missions' | 'recentlyClosed' | 'sessions') =>
+    view === 'missions'
+      ? stores.missions
+      : view === 'sessions'
+        ? stores.sessions
+        : stores.recently_closed;
+  const pkOf = (view: 'missions' | 'recentlyClosed' | 'sessions'): string =>
     view === 'missions' ? 'missionId' : 'entryId';
   for (const frame of frames) {
-    const store = stores[frame.view === 'missions' ? 'missions' : 'recently_closed'];
+    const store = shelfOf(frame.view);
     for (const op of frame.ops) {
       if (op.kind === 'upsert') store.set(op.key, { ...op.record });
       if (op.kind === 'remove') store.delete(op.key);
@@ -96,6 +107,7 @@ const replayFrames = (frames: readonly ViewDeltaFrame[]): string => {
   return stableStringify({
     missions: asArray(stores.missions),
     recently_closed: asArray(stores.recently_closed),
+    sessions: asArray(stores.sessions),
   });
 };
 

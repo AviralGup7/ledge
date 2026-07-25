@@ -17,6 +17,7 @@ import type {
 } from '@/application/ports/projection-engine.port.js';
 import type {
   StorageEnginePort,
+  StorageKey,
   StoreName,
   StoredRecord,
   TxScope,
@@ -275,8 +276,8 @@ export function createProjectionEngine(deps: ProjectionEngineDeps): ProjectionEn
         const rows = await table.toArray();
         await table.deleteMany(
           rows
-            .map((r) => r[primaryKeyFieldOf(projector.store)])
-            .filter((k): k is string => typeof k === 'string' && k.length > 0),
+            .map((r) => primaryKeyOfRow(projector.store, r))
+            .filter((k): k is StorageKey => k !== null),
         );
         const wmTable = await readWatermarkTable(tx);
         for (const key of Object.keys(wmTable)) {
@@ -344,6 +345,24 @@ const primaryKeyFieldOf = (store: StoreName): string => {
     default:
       return 'missionId';
   }
+};
+
+/**
+ * Row→primary key per view store (rebuild wipe law). Compound-pk stores like
+ * 'sessions' ([snapshotId+partIndex]) key by TUPLE, not by a single field —
+ * E2-T08: without this the wipe-address was a single field and the compound
+ * store silently kept its rows across rebuilds.
+ */
+const primaryKeyOfRow = (store: StoreName, row: StoredRecord): StorageKey | null => {
+  if (store === 'sessions') {
+    const snapshotId = row['snapshotId'];
+    const partIndex = row['partIndex'];
+    return typeof snapshotId === 'string' && typeof partIndex === 'number'
+      ? [snapshotId, partIndex]
+      : null;
+  }
+  const k = row[primaryKeyFieldOf(store)];
+  return typeof k === 'string' && k.length > 0 ? k : null;
 };
 
 /** Patch law: the store's pk field must survive the merge (shallow patch never drops it). */

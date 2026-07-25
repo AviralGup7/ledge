@@ -104,6 +104,10 @@ export const EVENT_REGISTRY = {
       tabRecordRefs: 'id[]',
       groupStyles: 'record[]',
       takenAt: 'number',
+      // E2-T08: §5 sessions-row trigger vocabulary; additive-optional in v1
+      // construction (builders always emit it; absent on hand-written fixtures
+      // and materialized as ABSENT, never fabricated).
+      'trigger?': 'string',
     },
   },
   ParkIntentAccepted: {

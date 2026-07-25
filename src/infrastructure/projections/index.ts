@@ -2,6 +2,7 @@
 import type { ProjectorDef } from '@/application/ports/projection-engine.port.js';
 import { missionsProjector } from './core/projectors/missions.projector.js';
 import { recentlyClosedProjector } from './core/projectors/recently-closed.projector.js';
+import { sessionsProjector } from '../snapshots/sessions.projector.js';
 import type { ProjectionEngineDeps } from './core/engine.js';
 import { createProjectionEngine } from './core/engine.js';
 
@@ -14,8 +15,14 @@ export { recentlyClosedProjector } from './core/projectors/recently-closed.proje
  * The v1 projector set (registry grows with use-cases; projectorV bumps trigger
  * rebuild-on-change per §2.10's versioning law). This is the shape surface roots
  * compose; tests inject narrower sets freely (manual DI, ADR-025).
+ * SessionsView (E2-T08) lives in infrastructure/snapshots (its family's home)
+ * and registers here — the engine owns execution, the family owns the row law.
  */
-export const V1_PROJECTORS: readonly ProjectorDef[] = [missionsProjector, recentlyClosedProjector];
+export const V1_PROJECTORS: readonly ProjectorDef[] = [
+  missionsProjector,
+  recentlyClosedProjector,
+  sessionsProjector,
+];
 
 /** Convenience factory on the full v1 set. */
 export const createV1ProjectionEngine = (

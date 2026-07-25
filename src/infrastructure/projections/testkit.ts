@@ -99,12 +99,20 @@ export const seedJournal = async (
 
 export const storeSnapshot = async (
   h: ProjectionHarness,
-  store: 'missions' | 'recently_closed',
+  store: 'missions' | 'recently_closed' | 'sessions',
 ): Promise<readonly StoredRecord[]> => {
   const r = await h.engine.txn([store], 'readonly', (tx) =>
     tx.table<StoredRecord>(store).toArray(),
   );
   if (!r.ok) throw new Error('snapshot failed');
+  // E2-T08: sessions sorts by compound pk (snapshotId,partIndex); others by single pk.
+  if (store === 'sessions') {
+    return [...r.value].sort(
+      (a, b) =>
+        String(a['snapshotId'] ?? '').localeCompare(String(b['snapshotId'] ?? '')) ||
+        Number(a['partIndex'] ?? 0) - Number(b['partIndex'] ?? 0),
+    );
+  }
   const pk = store === 'missions' ? 'missionId' : 'entryId';
   return [...r.value].sort((a, b) => String(a[pk] ?? '').localeCompare(String(b[pk] ?? '')));
 };
