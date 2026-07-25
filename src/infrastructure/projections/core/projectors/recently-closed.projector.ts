@@ -4,15 +4,10 @@
 import type { DeltaOp, ProjectorDef } from '@/application/ports/projection-engine.port.js';
 import type { StoredRecord } from '@/application/ports/storage-engine.port.js';
 
-/** §5 'recently_closed' row. Type alias for StoredRecord's implicit index signature. */
-export type RecentlyClosedRow = {
-  readonly entryId: string;
-  readonly tabId: string;
-  readonly closedAt: number;
-  readonly source: 'external' | 'reconciled';
-  readonly missionId?: string | undefined;
-  readonly snapshotRef?: string | undefined;
-};
+/** §5 'recently_closed' row — declaration lives at the application port seam
+ *  (view-rows); re-exported here for existing import sites. */
+export type { RecentlyClosedRow } from '@/application/ports/view-rows.js';
+import type { RecentlyClosedRow } from '@/application/ports/view-rows.js';
 
 /** Deterministic entry ids (≤1 open slot per tab; a fresh close re-enters it). */
 export const entryIdForTab = (ledgeTabId: string): string => `${ledgeTabId}:rc`;

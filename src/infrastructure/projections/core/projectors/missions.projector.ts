@@ -4,18 +4,10 @@
 import type { DeltaOp, ProjectorDef } from '@/application/ports/projection-engine.port.js';
 import type { StoredRecord } from '@/application/ports/storage-engine.port.js';
 
-/** §5 'missions' row (view shape; additive fields allowed forward). Type alias for
- *  StoredRecord's implicit index signature. */
-export type MissionViewRow = {
-  readonly missionId: string;
-  readonly name: string;
-  readonly namedBy: string;
-  readonly state: 'live' | 'archived';
-  readonly concluded: boolean;
-  readonly tabIds: readonly string[];
-  readonly createdAt: number;
-  readonly lastActiveAt: number;
-};
+/** §5 'missions' row — declaration lives at the application port seam (view-rows);
+ *  re-exported here for the projector family's existing import sites. */
+export type { MissionViewRow } from '@/application/ports/view-rows.js';
+import type { MissionViewRow } from '@/application/ports/view-rows.js';
 
 const asIds = (v: unknown): readonly string[] => (Array.isArray(v) ? (v as readonly string[]) : []);
 

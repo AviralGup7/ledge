@@ -1,0 +1,195 @@
+// E3-APP · Mission deliverable "Application DTOs + Result mapping" — the shapes that
+// cross application → surface. Law: DTOs are derived, display-free Data; every field a
+// surface sees is listed here (never a store row passthrough — internal fields
+// (urlCanonHash, canonRulesV, derivedFromSeqRange, schemaV, contentIndexFlag, scroll)
+// stop at this boundary). Unknown fields inside rows ride forward-tolerance: missing /
+// extra row fields degrade, never throw (storage §2.9 law mirrored read-side).
+import type { StoredRecord } from '@/application/ports/storage-engine.port.js';
+import type { MissionViewRow, RecentlyClosedRow } from '@/application/ports/view-rows.js';
+import type { TabInfo } from '@/application/ports/tabs.port.js';
+
+// Row declarations come from the application port seam (view-rows.ts) — the DTO
+// boundary never reaches into infrastructure.
+
+/** Lifecycle mission state as surfaces understand it (additive: 'trash' is E3-incoming). */
+export type MissionState = MissionViewRow['state'] | 'trash';
+
+export interface MissionView {
+  readonly missionId: string;
+  readonly name: string;
+  readonly namedBy: string;
+  readonly state: MissionState;
+  readonly concluded: boolean;
+  readonly createdAt: number;
+  readonly lastActiveAt: number;
+  /** Denormalized at map time (count of the current membership). */
+  readonly tabCount: number;
+}
+
+/** Tab state as surfaces understand it (§5 tabs row). */
+export type TabState = 'live' | 'kept' | 'trash';
+
+export interface TabView {
+  readonly tabId: string;
+  readonly missionId: string;
+  readonly url: string;
+  readonly title: string;
+  readonly domain: string;
+  readonly state: TabState;
+  readonly firstSeenAt: number;
+  readonly lastActiveAt: number;
+  readonly note?: string | undefined;
+}
+
+export interface ArtifactView {
+  readonly artifactId: string;
+  readonly subjectId: string;
+  readonly kind: string;
+  readonly value: unknown;
+  readonly confidence: number;
+  readonly provider: string;
+  readonly modelClass: string;
+}
+
+export interface MissionDetailView {
+  readonly mission: MissionView;
+  readonly tabs: readonly TabView[];
+  readonly artifacts: readonly ArtifactView[];
+}
+
+export interface RecentlyClosedEntryView {
+  readonly entryId: string;
+  readonly tabId: string;
+  readonly closedAt: number;
+  readonly source: RecentlyClosedRow['source'];
+  readonly missionId?: string | undefined;
+  readonly snapshotRef?: string | undefined;
+}
+
+export type TrashKind = 'tab' | 'mission' | 'batch';
+
+export interface TrashEntryView {
+  readonly kind: TrashKind;
+  readonly id: string;
+  readonly deletedAt: number;
+  readonly displayName: string;
+  /** Parent resolution input for C16 (dead-parent rule, §10-R13). */
+  readonly parentMissionId?: string | undefined;
+}
+
+export interface LibraryPage {
+  readonly missions: readonly MissionView[];
+  readonly nextCursor?: string | undefined;
+}
+
+export interface HeartbeatView {
+  readonly keptCount: number;
+  readonly liveRecoverable: number;
+  readonly asOf: number;
+}
+
+export interface BootstrapView {
+  readonly missions: readonly MissionView[];
+  readonly recentlyClosed: readonly RecentlyClosedEntryView[];
+  readonly trashCount: number;
+  readonly watermark: number;
+  readonly settings: Readonly<Record<string, unknown>>;
+  readonly heartbeat: HeartbeatView;
+}
+
+export interface SearchHitView {
+  readonly tabId: string;
+  readonly missionId: string;
+  readonly title: string;
+  readonly url: string;
+  readonly domain: string;
+  readonly state: TabState | 'open';
+}
+
+export interface SearchResultsView {
+  readonly results: readonly SearchHitView[];
+  readonly freshness: 'fresh' | 'lagging' | 'fallback';
+  readonly searchedScopes: readonly string[];
+}
+
+export interface OpenTabView {
+  readonly browserTabId: number;
+  readonly windowId: number;
+  readonly title: string;
+  readonly url: string;
+  readonly pinned: boolean;
+  readonly active: boolean;
+  readonly groupId: number | null;
+}
+
+// ── Mapping (row → dto; total functions, forward-tolerant) ────────────────────────
+
+const str = (v: unknown, fallback = ''): string => (typeof v === 'string' ? v : fallback);
+const num = (v: unknown, fallback = 0): number => (typeof v === 'number' ? v : fallback);
+
+const KNOWN_STATES: readonly string[] = ['live', 'archived', 'trash'];
+
+export const missionViewOf = (
+  row: MissionViewRow | (StoredRecord & { tabIds?: unknown }),
+): MissionView => {
+  const r = row as Readonly<Record<string, unknown>>;
+  const stateRaw = str(r['state'], 'live');
+  const tabIds = r['tabIds'];
+  return {
+    missionId: str(r['missionId']),
+    name: str(r['name']),
+    namedBy: str(r['namedBy'], 'system'),
+    state: (KNOWN_STATES.includes(stateRaw) ? stateRaw : 'live') as MissionState,
+    concluded: r['concluded'] === true,
+    createdAt: num(r['createdAt']),
+    lastActiveAt: num(r['lastActiveAt']),
+    tabCount: Array.isArray(tabIds) ? tabIds.length : 0,
+  };
+};
+
+const TAB_STATES: readonly string[] = ['live', 'kept', 'trash'];
+
+export const tabViewOf = (row: StoredRecord): TabView => {
+  const stateRaw = str(row['state'], 'kept');
+  const note = row['note'];
+  return {
+    tabId: str(row['ledgeTabId']),
+    missionId: str(row['missionId']),
+    url: str(row['url']),
+    title: str(row['title']),
+    domain: str(row['domain']),
+    state: (TAB_STATES.includes(stateRaw) ? stateRaw : 'kept') as TabState,
+    firstSeenAt: num(row['firstSeenAt']),
+    lastActiveAt: num(row['lastActiveAt']),
+    ...(typeof note === 'string' && note.length > 0 ? { note } : {}),
+  };
+};
+
+export const artifactViewOf = (row: StoredRecord): ArtifactView => ({
+  artifactId: str(row['artifactId']),
+  subjectId: str(row['subjectId']),
+  kind: str(row['kind']),
+  value: row['value'],
+  confidence: num(row['confidence'], 0),
+  provider: str(row['provider'], 'unknown'),
+  modelClass: str(row['modelClass'], 'unknown'),
+});
+
+export const recentlyClosedViewOf = (row: RecentlyClosedRow): RecentlyClosedEntryView => ({
+  entryId: row.entryId,
+  tabId: row.tabId,
+  closedAt: row.closedAt,
+  source: row.source,
+  ...(row.missionId !== undefined ? { missionId: row.missionId } : {}),
+  ...(row.snapshotRef !== undefined ? { snapshotRef: row.snapshotRef } : {}),
+});
+
+export const openTabViewOf = (info: TabInfo): OpenTabView => ({
+  browserTabId: info.browserTabId,
+  windowId: info.windowId,
+  title: info.title,
+  url: info.url,
+  pinned: info.pinned,
+  active: info.active,
+  groupId: info.groupId,
+});
