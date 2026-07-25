@@ -1,0 +1,64 @@
+{
+  "$comment": "E2-T04 · ADR-034 N-1→N golden fixture — expected post-migration byte image after the TEST-ONLY v2 step. Laws proven: (1) every pre-existing row's fields survive byte-identical (incl. unknown fields at record/nested/array depth), (2) the pure transform adds lastTouchedAt = lastActiveAt per tab, (3) the new preferences store is seeded, (4) meta carries schemaV = 2 stamped by the step's own commit. Append-only (ADR-033).",
+  "stores": {
+    "meta": [
+      { "key": "deviceId", "value": "01J0ZK9QW8DEVICEFIXTURE001" },
+      { "key": "schemaV", "value": 2 }
+    ],
+    "missions": [
+      {
+        "missionId": "01J0ZK9QW8MISSIONFUTUREV9A",
+        "name": "Field research",
+        "namedBy": "user",
+        "state": "active",
+        "concluded": false,
+        "createdAt": 1785000000000,
+        "lastActiveAt": 1785006000000,
+        "tabIds": ["01J0ZK9QW8TABAAAAAAAAAAAAA1"],
+        "futureFieldV9": {
+          "aiNarrative": "kept verbatim though this build cannot read it",
+          "confidence": 0.87,
+          "tags": ["alpha", "beta"]
+        },
+        "syncVectorV2": [3, 1, 4, 1, 5, 9],
+        "optionalNullV3": null,
+        "toggleV4": true
+      }
+    ],
+    "tabs": [
+      {
+        "ledgeTabId": "01J0ZK9QW8TABFUTUREV70001",
+        "missionId": "01J0ZK9QW8MISSIONFUTUREV9A",
+        "state": "live",
+        "urlCanon": "https://example.com/research",
+        "urlCanonHash": "a1b2c3d4e5f60708",
+        "domain": "example.com",
+        "title": "Research notes",
+        "lastActiveAt": 1785006000000,
+        "lastTouchedAt": 1785006000000,
+        "deletedAt": null,
+        "futureFlagV7": true,
+        "futureMetaV6": { "score": 42 }
+      },
+      {
+        "ledgeTabId": "01J0ZK9QW8TABAAAAAAAAAAAAA1",
+        "missionId": null,
+        "state": "live",
+        "urlCanon": "https://example.org/loose",
+        "urlCanonHash": "0f1e2d3c4b5a6978",
+        "domain": "example.org",
+        "title": "Loose page",
+        "lastActiveAt": 1785006100000,
+        "lastTouchedAt": 1785006100000,
+        "deletedAt": null,
+        "futureListV5": ["x", { "y": 2 }]
+      }
+    ],
+    "settings": [
+      { "key": "theme", "value": "calm" }
+    ],
+    "preferences": [
+      { "key": "uiScale", "value": 1 }
+    ]
+  }
+}

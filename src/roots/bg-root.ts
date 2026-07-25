@@ -17,7 +17,7 @@ import {
   type DeviceId,
   type RandomBytes,
 } from '@/shared-kernel/identity/index.js';
-import { err, ledgeError, type LedgeError, type Result } from '@/shared-kernel/result/index.js';
+import { err, ledgeError, ok, type LedgeError, type Result } from '@/shared-kernel/result/index.js';
 
 /** meta row carrying install identity (EES §5 meta-row law; stamped exactly once). */
 const META_DEVICE_ID_KEY = 'deviceId';
@@ -37,9 +37,32 @@ export interface BackgroundGraphDeps {
   readonly randomBytes?: RandomBytes;
 }
 
+/**
+ * EES §5 global law 6 — boot-time storage health. Probed on every boot (cold
+ * or warm): quota posture + durable persistence. The persistence REQUEST runs
+ * whenever the bucket isn't persisted yet (first-run is a special case of
+ * that condition; navigator.storage.persist() is idempotent and silent in
+ * Chrome, so re-asking costs nothing and the law needs no first-run memory).
+ * Failures here are telemetry, not boot blockers: quota/persist misbehaviour
+ * degrades to explicit report fields, never to a fatal boot error.
+ */
+export interface StorageLawReport {
+  readonly apiAvailable: boolean;
+  readonly persisted: boolean;
+  /** True when persist() was invoked this boot (only when not already persisted). */
+  readonly requested: boolean;
+  /** Outcome: already-persisted, or the persist() answer when requested. */
+  readonly granted: boolean;
+  /** usage/quota in [0,1] when the platform discloses both; §5's <80% posture. */
+  readonly pressureRatio?: number | undefined;
+  /** Error code when probing/requesting failed (non-fatal by law). */
+  readonly error?: string | undefined;
+}
+
 export interface BackgroundBoot {
   /** Install identity, stable across every restart (EES §2.1 immutability law). */
   readonly deviceId: DeviceId;
+  readonly storageLaw: StorageLawReport;
 }
 
 export interface BackgroundGraph {
@@ -59,7 +82,7 @@ const BOOT_SCOPE: readonly StoreName[] = ['meta'];
 const bootIdentity = async (
   storage: StorageEnginePort,
   randomBytes?: RandomBytes,
-): Promise<Result<BackgroundBoot, LedgeError>> => {
+): Promise<Result<{ readonly deviceId: DeviceId }, LedgeError>> => {
   const opened = await storage.open();
   if (!opened.ok) return opened;
   return storage.txn(BOOT_SCOPE, 'readwrite', async (tx) => {
@@ -86,14 +109,59 @@ const bootIdentity = async (
   });
 };
 
+/** §5 law 6 wiring: probe quota, request persistence when the bucket isn't durable. */
+const bootStorageLaw = async (storage: StorageEnginePort): Promise<StorageLawReport> => {
+  try {
+    const probed = await storage.quota();
+    if (!probed.ok) {
+      return {
+        apiAvailable: false,
+        persisted: false,
+        requested: false,
+        granted: false,
+        error: probed.error.code,
+      };
+    }
+    const quota = probed.value;
+    const base = {
+      apiAvailable: quota.apiAvailable,
+      persisted: quota.persisted,
+      ...(quota.pressureRatio !== undefined ? { pressureRatio: quota.pressureRatio } : {}),
+    };
+    if (!quota.apiAvailable || quota.persisted) {
+      return { ...base, requested: false, granted: quota.persisted };
+    }
+    const answer = await storage.persist();
+    if (!answer.ok) {
+      return { ...base, requested: true, granted: false, error: answer.error.code };
+    }
+    return { ...base, requested: true, granted: answer.value };
+  } catch (cause) {
+    // A misbehaving probe/persist adapter is a health-signal gap, not a boot blocker.
+    return {
+      apiAvailable: false,
+      persisted: false,
+      requested: false,
+      granted: false,
+      error: ledgeError('E_CAPABILITY', { site: 'boot-storage-law', raw: String(cause) }).code,
+    };
+  }
+};
+
 export function composeBackgroundGraph(deps: BackgroundGraphDeps = {}): BackgroundGraph {
   const storage = deps.storage ?? createDexieStorageEngine(deps.idb);
   const journal = createJournal(storage);
   // An adapter that throws instead of returning err is an integrity event at boot —
   // fold it into the fatal class so callers only ever reason about Results.
-  const boot = bootIdentity(storage, deps.randomBytes).catch((cause: unknown) =>
-    err(ledgeError('E_CORRUPT_STORE', { what: 'boot-unexpected-throw', cause: String(cause) })),
-  );
+  const boot = bootIdentity(storage, deps.randomBytes)
+    .then(async (identity): Promise<Result<BackgroundBoot, LedgeError>> => {
+      if (!identity.ok) return err(identity.error);
+      const storageLaw = await bootStorageLaw(storage);
+      return ok({ deviceId: identity.value.deviceId, storageLaw });
+    })
+    .catch((cause: unknown) =>
+      err(ledgeError('E_CORRUPT_STORE', { what: 'boot-unexpected-throw', cause: String(cause) })),
+    );
   return { storage, journal, boot };
 }
 

@@ -30,7 +30,8 @@ export interface DexieEngineDeps {
   readonly idbKeyRange?: typeof IDBKeyRange;
 }
 
-const DEFAULT_DB_NAME = 'ledge';
+/** Shared with the migration runner (same physical database, same meta row). */
+export const DEFAULT_DB_NAME = 'ledge';
 
 /** meta store row shape used by this adapter for the §2.9 schema-version integer.
  *  Type alias (not interface) so it stays assignable to StoredRecord's index signature. */
@@ -39,7 +40,8 @@ type MetaRow = {
   readonly value: unknown;
 };
 
-const META_SCHEMA_KEY = 'schemaV';
+/** Shared with the migration runner (§2.9 version integer row; runner re-stamps per step). */
+export const META_SCHEMA_KEY = 'schemaV';
 
 /** Structural check — a thrown LedgeError carries our envelope; anything else is foreign. */
 const isLedgeError = (e: unknown): e is LedgeError => {

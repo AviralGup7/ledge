@@ -12,7 +12,10 @@
 //      construction (contract-proven against ops/fixtures/storage/unknown-field.golden.json).
 //
 // Method inventory per §6: txn(scope[],mode) · typed store CRUD · quota() · persist().
-// migrate(version,map) and the N-1→N fixture suite land with the migration runner (E2-T04).
+// Schema evolution is owned by the migration runner (src/infrastructure/storage/migrations,
+// E2-T04 · ADR-034): this port stays an unversioned CRUD seam — open()'s foreign-version
+// assert and schemaVersion() are the runner's integration surface, and its N-1→N golden
+// fixture suite lives under ops/fixtures/migrations/.
 import type { LedgeError, Result } from '@/shared-kernel/result/index.js';
 import type { StoreName } from './storage-stores.catalog.js';
 

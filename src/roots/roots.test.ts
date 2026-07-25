@@ -3,9 +3,11 @@
 import { describe, expect, it } from 'vitest';
 import { CONTRACT_V, computeContractHash } from '@/application/contracts/index.js';
 import type { MessageEnvelope, ValidationOutcome } from '@/application/contracts/index.js';
+import type { QuotaStatus } from '@/application/ports/storage-engine.port.js';
 import { DEV_A, makeEnv, uniqueKey } from '@/infrastructure/journal/core/testkit.js';
 import { createMemoryStorageEngine } from '@/infrastructure/storage/memory/memory-engine.js';
 import { isDeviceId, isId } from '@/shared-kernel/identity/index.js';
+import { err, ledgeError, ok } from '@/shared-kernel/result/index.js';
 import { composeBackgroundGraph } from './bg-root.js';
 import { composeWorkroomGraph } from './offscreen-root.js';
 import { composeQuietPageGraph } from './page-root.js';
@@ -13,6 +15,9 @@ import { composeQuietPageGraph } from './page-root.js';
 const BAD_DEVICE_ID_BYTES = (): Uint8Array => {
   throw new Error('entropy dead');
 };
+
+/** Pressure fixture for the §5 law 6 suite (well under the 80% posture line). */
+const PRESSURE_TENTH = 0.1;
 
 describe('bg-root — background graph (ADR-025)', () => {
   it('boots with a stub storage adapter and provisions install identity', async () => {
@@ -85,6 +90,102 @@ describe('bg-root — background graph (ADR-025)', () => {
     const boot = await second.boot;
     expect(boot.ok).toBe(false);
     if (!boot.ok) expect(boot.error.code).toBe('E_CORRUPT_STORE');
+  });
+});
+
+describe('bg-root — §5 law 6 boot storage law (E2-T04)', () => {
+  const withStorageMgr = (
+    base: ReturnType<typeof createMemoryStorageEngine>,
+    quota: QuotaStatus,
+    persistAnswer?: boolean,
+  ) => ({
+    ...base,
+    quota: () => Promise.resolve(ok<QuotaStatus>(quota)),
+    ...(persistAnswer !== undefined ? { persist: () => Promise.resolve(ok(persistAnswer)) } : {}),
+  });
+
+  it('an unavailable storage API degrades to explicit report fields (never fatal)', async () => {
+    const graph = composeBackgroundGraph({ storage: createMemoryStorageEngine() });
+    const boot = await graph.boot;
+    expect(boot.ok).toBe(true);
+    if (boot.ok) {
+      expect(boot.value.storageLaw).toEqual({
+        apiAvailable: false,
+        persisted: false,
+        requested: false,
+        granted: false,
+      });
+    }
+  });
+
+  it('requests persistence when the bucket is not yet durable, surfacing the pressure ratio', async () => {
+    const engine = withStorageMgr(
+      createMemoryStorageEngine(),
+      {
+        apiAvailable: true,
+        persisted: false,
+        usageBytes: 100,
+        quotaBytes: 1000,
+        pressureRatio: PRESSURE_TENTH,
+      },
+      true,
+    );
+    const graph = composeBackgroundGraph({ storage: engine });
+    const boot = await graph.boot;
+    expect(boot.ok).toBe(true);
+    if (boot.ok) {
+      expect(boot.value.storageLaw.requested).toBe(true);
+      expect(boot.value.storageLaw.granted).toBe(true);
+      expect(boot.value.storageLaw.pressureRatio).toBe(PRESSURE_TENTH);
+    }
+  });
+
+  it('never re-asks when the bucket is already persisted', async () => {
+    let persistCalls = 0;
+    const base = createMemoryStorageEngine();
+    const engine = {
+      ...base,
+      quota: () => Promise.resolve(ok<QuotaStatus>({ apiAvailable: true, persisted: true })),
+      persist: () => {
+        persistCalls += 1;
+        return Promise.resolve(ok(true));
+      },
+    };
+    const boot = await composeBackgroundGraph({ storage: engine }).boot;
+    expect(boot.ok).toBe(true);
+    if (boot.ok) {
+      expect(boot.value.storageLaw.requested).toBe(false);
+      expect(boot.value.storageLaw.granted).toBe(true);
+    }
+    expect(persistCalls).toBe(0);
+  });
+
+  it('a denied persistence request is a valid answer, not a boot failure', async () => {
+    const engine = withStorageMgr(
+      createMemoryStorageEngine(),
+      { apiAvailable: true, persisted: false },
+      false,
+    );
+    const boot = await composeBackgroundGraph({ storage: engine }).boot;
+    expect(boot.ok).toBe(true);
+    if (boot.ok) {
+      expect(boot.value.storageLaw.requested).toBe(true);
+      expect(boot.value.storageLaw.granted).toBe(false);
+    }
+  });
+
+  it('a failing quota probe is redacted into the report while boot proceeds', async () => {
+    const base = createMemoryStorageEngine();
+    const engine = {
+      ...base,
+      quota: () => Promise.resolve(err(ledgeError('E_QUOTA', { site: 'boot-law-test' }))),
+    };
+    const boot = await composeBackgroundGraph({ storage: engine }).boot;
+    expect(boot.ok).toBe(true);
+    if (boot.ok) {
+      expect(boot.value.storageLaw.error).toBe('E_QUOTA');
+      expect(boot.value.storageLaw.requested).toBe(false);
+    }
   });
 });
 
