@@ -13,6 +13,7 @@ import type { LedgeError, Result } from '@/shared-kernel/result/index.js';
 import type { JournalPort } from '@/application/ports/journal.port.js';
 import type { IntentLedgerPort } from '@/application/ports/intent-ledger.port.js';
 import type { ProjectionEnginePort } from '@/application/ports/projection-engine.port.js';
+import type { BootSignalSection } from '../marker/index.js';
 
 /** BootReport schema covenant (EES §2.13 versioning law). */
 export const RECONCILE_REPORT_SCHEMA_V = 1;
@@ -89,6 +90,12 @@ export interface BootReport {
   readonly deviceId: DeviceId;
   readonly bootTs: number;
   readonly outcome: BootOutcome;
+  /**
+   * E2-T07 · crash-marker signal (ADR-007 §4 + EES-R16): what the storage
+   * markers prove about this wake + the §14.4-gated copy path computed with
+   * this report's own lossRisk (the card-law lives in exactly one place).
+   */
+  readonly bootSignal: BootSignalSection;
   /** §14.4 gating input: recovery card shown ONLY when true. */
   readonly lossRisk: boolean;
   readonly journalProbe: JournalProbeReport;

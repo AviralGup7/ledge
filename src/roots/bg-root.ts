@@ -10,6 +10,8 @@ import type { JournalPort } from '@/application/ports/journal.port.js';
 import type { StoreName } from '@/application/ports/storage-engine.port.js';
 import type { StorageEnginePort } from '@/application/ports/storage-engine.port.js';
 import { createJournal } from '@/infrastructure/journal/index.js';
+import { createChromeStorageAreaAdapter } from '@/infrastructure/chrome/index.js';
+import { stampInstallMarker } from '@/infrastructure/recovery/marker/index.js';
 import { createDexieStorageEngine, type DexieEngineDeps } from '@/infrastructure/storage/index.js';
 import {
   createDeviceId,
@@ -168,15 +170,28 @@ export function composeBackgroundGraph(deps: BackgroundGraphDeps = {}): Backgrou
 /**
  * Activate the background context. Listeners register first and synchronously
  * (ADR-007); the async boot proceeds behind them and its Result is retained on
- * the returned graph — E2's boot reconciler takes ownership of it from here.
+ * the returned graph. The onInstalled listener stamps the version-change
+ * marker (EES-R16 disambiguator input) through the StorageAreaPort adapter —
+ * the rest of the crash-marker lifecycle + boot reconcile (runBootSequence)
+ * wires here when the recovery graph lands (ledger/projections composition).
  */
 export function bootstrapBackground(): BackgroundGraph {
+  const storageArea = createChromeStorageAreaAdapter();
   chrome.runtime.onInstalled.addListener((details) => {
-    // First-run marker (E4-T11 owns onboarding; recovery marker semantics land E2-T07).
-    // Record the install reason so update-vs-crash disambiguation (EES §10-R16) has input.
-    void chrome.storage.local.set({
-      'meta.buildMarker': { reason: details.reason, at: Date.now() },
-    });
+    // E2-T07 · EES-R16: every install/update/chrome_update leaves a durable
+    // version stamp; the boot classifier compares it against the last
+    // completed boot to separate update-driven restarts from crashes.
+    void stampInstallMarker(
+      storageArea,
+      {
+        reason: details.reason,
+        ...(details.previousVersion !== undefined
+          ? { previousVersion: details.previousVersion }
+          : {}),
+      },
+      chrome.runtime.getManifest().version,
+      Date.now(),
+    );
   });
   return composeBackgroundGraph();
 }

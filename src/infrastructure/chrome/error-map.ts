@@ -32,3 +32,21 @@ export const mapChromeError = (e: unknown, api: string): LedgeError => {
     ? ledgeError('E_NOT_FOUND_TAB', { api, raw })
     : ledgeError('E_CAPABILITY_API', { api, raw });
 };
+
+/**
+ * chrome.storage rejection vocabulary (E2-T07 · EES §6 StorageAreaPort failure
+ * class): quota rejections surface as E_QUOTA (session area is quota-capped;
+ * callers may reason about that), every other raw failure is E_CAPABILITY_API.
+ * The not-found family is absent here by design: storage get of a missing key
+ * resolves with `{}`, never rejects.
+ */
+export const mapStorageAreaError = (e: unknown, area: string): LedgeError => {
+  const raw = messageOf(e);
+  return /quota/i.test(raw)
+    ? ledgeError('E_QUOTA', { area, raw })
+    : ledgeError('E_CAPABILITY_API', { area, raw });
+};
+
+/** Firefox parity (EES §6): the session area does not exist on this browser. */
+export const sessionAreaUnavailable = (): LedgeError =>
+  ledgeError('E_CAPABILITY', { area: 'session', parity: 'firefox', what: 'storage.session' });

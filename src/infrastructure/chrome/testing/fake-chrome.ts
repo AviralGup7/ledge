@@ -9,6 +9,8 @@ import {
   CHROME_GROUP_ID_NONE,
   CHROME_WINDOW_ID_NONE,
   type ChromeEventSubscription,
+  type ChromeStorageApi,
+  type ChromeStorageAreaLike,
   type ChromeTabChangeInfo,
   type ChromeTabCreateProps,
   type ChromeTabLike,
@@ -72,21 +74,33 @@ const makeEvent = <TArgs extends readonly unknown[]>(): EventBus<TArgs> => {
 export interface FakeChromeOptions {
   readonly firstTabId?: number | undefined;
   readonly firstWindowId?: number | undefined;
+  /** E2-T07 · Firefox parity simulation: storage.session does not exist. */
+  readonly disableSession?: boolean | undefined;
 }
 
 export interface FakeChrome {
   readonly tabs: ChromeTabsApi;
   readonly windows: ChromeWindowsApi;
+  readonly storage: ChromeStorageApi;
   readonly hooks: {
     /** Drive an onUpdated turn (changeInfo echoed verbatim, chrome-style). */
     readonly updateTab: (tabId: number, changeInfo: ChromeTabChangeInfo) => void;
     readonly activateTab: (tabId: number) => void;
     /** One-shot sabotage: the NEXT api call (tabs or windows) rejects with `cause`. */
     readonly sabotageNext: (cause: unknown) => void;
+    /** E2-T07 · one-shot sabotage scoped to the NEXT storage-area call. */
+    readonly sabotageStorageNext: (cause: unknown) => void;
+    /**
+     * E2-T07 · browser-restart simulation (ADR-007 §4): session storage dies,
+     * local persists. SW recycling is simulated by simply NOT calling this.
+     */
+    readonly clearSessionArea: () => void;
     /** Raw inspection for assertions. */
     readonly tabIdsInWindow: (windowId: number) => readonly number[];
     readonly rawTab: (tabId: number) => ChromeTabLike | undefined;
     readonly focusedWindowId: () => number;
+    /** E2-T07 · raw area contents (assertion seam for marker records). */
+    readonly storageDump: (area: 'local' | 'session') => Record<string, unknown>;
   };
 }
 
@@ -127,6 +141,42 @@ export function createFakeChrome(opts: FakeChromeOptions = {}): FakeChrome {
     const s = sabotage;
     sabotage = undefined;
     return s;
+  };
+
+  // --- E2-T07 · storage areas (chrome.storage semantics) ---------------------
+  // local persists across `clearSessionArea()` (browser restart); session dies.
+  // Values pass through byte-identical (chrome.storage JSON covenant is the
+  // caller's duty — the fake, like chrome, does no schema validation).
+  const localData = new Map<string, unknown>();
+  let sessionData = new Map<string, unknown>();
+  let storageSabotage: unknown;
+
+  const consumeStorageSabotage = (): unknown => {
+    const s = storageSabotage;
+    storageSabotage = undefined;
+    return s;
+  };
+
+  const makeArea = (data: () => Map<string, unknown>): ChromeStorageAreaLike => ({
+    get: (keys: string) => {
+      const s = consumeStorageSabotage();
+      if (s !== undefined) return Promise.reject(s);
+      const record: Record<string, unknown> = {};
+      const value = data().get(keys);
+      if (value !== undefined) record[keys] = value;
+      return Promise.resolve(record);
+    },
+    set: (items: Record<string, unknown>) => {
+      const s = consumeStorageSabotage();
+      if (s !== undefined) return Promise.reject(s);
+      for (const [k, v] of Object.entries(items)) data().set(k, v);
+      return Promise.resolve();
+    },
+  });
+
+  const storageApi: ChromeStorageApi = {
+    local: makeArea(() => localData),
+    ...(opts.disableSession === true ? {} : { session: makeArea(() => sessionData) }),
   };
 
   const copy = (t: FakeTab): ChromeTabLike => ({ ...t });
@@ -354,6 +404,7 @@ export function createFakeChrome(opts: FakeChromeOptions = {}): FakeChrome {
   return {
     tabs: tabsApi,
     windows: windowsApi,
+    storage: storageApi,
     hooks: {
       updateTab: (tabId, changeInfo) => {
         const t = tabs.get(tabId);
@@ -374,12 +425,19 @@ export function createFakeChrome(opts: FakeChromeOptions = {}): FakeChrome {
       sabotageNext: (cause) => {
         sabotage = cause;
       },
+      sabotageStorageNext: (cause) => {
+        storageSabotage = cause;
+      },
+      clearSessionArea: () => {
+        sessionData = new Map();
+      },
       tabIdsInWindow: (windowId) => [...(windows.get(windowId)?.tabIds ?? [])],
       rawTab: (tabId) => {
         const t = tabs.get(tabId);
         return t === undefined ? undefined : copy(t);
       },
       focusedWindowId: () => focusedId,
+      storageDump: (area) => Object.fromEntries(area === 'local' ? localData : sessionData),
     },
   };
 }

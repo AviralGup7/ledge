@@ -10,6 +10,7 @@ import type { IntentLedgerPort, IntentRecord } from '@/application/ports/intent-
 import type { JournalPort, ReadRangeResult } from '@/application/ports/journal.port.js';
 import type { StorageEnginePort } from '@/application/ports/storage-engine.port.js';
 import type { ProjectionEnginePort } from '@/application/ports/projection-engine.port.js';
+import type { BootSignal } from '../marker/index.js';
 import type { LedgeError, Result } from '@/shared-kernel/result/index.js';
 import { err, ledgeError } from '@/shared-kernel/result/index.js';
 import { createJournal } from '@/infrastructure/journal/index.js';
@@ -224,8 +225,51 @@ export const withSabotage = (w: ReconcileWorld, sabotage: Sabotage): ReconcilerD
   return { ...w.deps, journal, ledger };
 };
 
-export const reconcile = (w: ReconcileWorld, deps?: ReconcilerDeps) =>
-  reconcileBoot(deps ?? w.deps);
+/**
+ * Canned crash-marker signal for reconcile-focused fixtures (E2-T07 added the
+ * signal as an explicit reconcileBoot input). Worlds that never exercise the
+ * marker lifecycle simulate a plain SW recycle: warm, invisible, copyKey null.
+ */
+export const warmBootSignal = (): BootSignal => ({
+  cause: 'warm-recycle',
+  abnormal: false,
+  evidence: {
+    aliveSeen: true,
+    installReason: 'install',
+    installedVersion: '0.0.0-test',
+    lastBootVersion: '0.0.0-test',
+    installedAt: WALL_BASE,
+    lastBootAt: WALL_BASE,
+  },
+  gaps: [],
+});
+
+export const reconcile = (w: ReconcileWorld, deps?: ReconcilerDeps, signal?: BootSignal) =>
+  reconcileBoot(deps ?? w.deps, signal ?? warmBootSignal());
+
+/**
+ * Kill points THIS suite owns in ops/chaos/points.txt (flow-partition law:
+ * boot.* points belong to the marker suite — the partition is constitution-
+ * asserted across both suites so an orphan file line or a phantom fixture
+ * fails CI, from either side).
+ */
+export const RECONCILER_KILL_POINTS: readonly string[] = [
+  'park.commit-intent.before',
+  'park.commit-intent.after',
+  'park.browser-close.mid-batch',
+  'park.commit-completion.before',
+  'park.commit-completion.after',
+  'resume.intent.after',
+  'resume.window-create.mid',
+  'resume.tab-create.mid-batch',
+  'delete.commit.before',
+  'delete.commit.after',
+  'undo.apply.mid',
+  'import.commit.chunk-mid',
+  'import.commit.before-final-marker',
+  'trash.sweep.mid',
+  'archive.conclude.mid.artifact-write',
+];
 
 /** Type snapshot of one resolution for determinism comparisons (volatile fields out). */
 export const decisionProjection = (r: {

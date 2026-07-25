@@ -46,6 +46,24 @@ export interface ChromeTabMoveProps {
   readonly index: number;
 }
 
+// ---------------------------------------------------------------------------
+// E2-T07 · chrome.storage subset (crash-marker lifecycle, EES §6 StorageAreaPort).
+// `session` is OPTIONAL on the structural type: Firefox parity — where the area
+// is missing the adapter answers typed E_CAPABILITY, never re-routes to local.
+// ---------------------------------------------------------------------------
+
+/** chrome.storage.StorageArea subset (get/set only — markers + hot flags' needs). */
+export interface ChromeStorageAreaLike {
+  readonly get: (keys: string) => Promise<Record<string, unknown>>;
+  readonly set: (items: Record<string, unknown>) => Promise<void>;
+}
+
+/** chrome.storage namespace subset. */
+export interface ChromeStorageApi {
+  readonly local: ChromeStorageAreaLike;
+  readonly session?: ChromeStorageAreaLike | undefined;
+}
+
 export interface ChromeTabsApi {
   readonly query: (queryInfo: Record<string, unknown>) => Promise<ChromeTabLike[]>;
   readonly get: (tabId: number) => Promise<ChromeTabLike>;

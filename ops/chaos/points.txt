@@ -15,4 +15,17 @@ import.commit.chunk-mid
 import.commit.before-final-marker
 trash.sweep.mid
 archive.conclude.mid.artifact-write
+# E2-T07 · crash-marker lifecycle durability boundaries (ADR-007 §4 / EES-R16):
+#   boot.marker.arm   — kill after session alive-arm resolves, before the local
+#                       boot stamp (partial wake; the next restart classifies
+#                       from the previous cycle's stamps — or none on a virgin
+#                       device, which collapses to first-run).
+#   boot.marker.stamp — kill the onInstalled wake after the install stamp is
+#                       durable but before arm/boot-stamp (truncated update
+#                       wake; the next boot must see a fresh stamp ⇒ 'updated').
+boot.marker.arm
+boot.marker.stamp
 # Notes: seed corpus += every point above at Tier-1 gate (EES §8). Never remove points; deprecate by comment only.
+# Flow-partition law: park/resume/delete/undo/import/trash/archive points are owned by
+# src/infrastructure/recovery/reconciler (E2-T06); boot.* points by recovery/marker (E2-T07).
+# The exact partition (file == owners, disjoint) is constitution-asserted across both suites.

@@ -6,10 +6,14 @@ export { createChromeTabsAdapter } from './tabs.adapter.js';
 export type { TabsAdapterDeps } from './tabs.adapter.js';
 export { createChromeWindowsAdapter } from './windows.adapter.js';
 export type { WindowsAdapterDeps } from './windows.adapter.js';
+export { createChromeStorageAreaAdapter } from './storage-area.adapter.js';
+export type { StorageAreaAdapterDeps } from './storage-area.adapter.js';
 export type {
   ChromeTabLike,
   ChromeTabChangeInfo,
   ChromeTabsApi,
   ChromeWindowLike,
   ChromeWindowsApi,
+  ChromeStorageAreaLike,
+  ChromeStorageApi,
 } from './api-surface.js';

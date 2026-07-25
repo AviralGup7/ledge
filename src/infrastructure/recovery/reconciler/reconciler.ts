@@ -35,6 +35,7 @@ import type { IntentRecord } from '@/application/ports/intent-ledger.port.js';
 import type { IngestDraft } from '@/application/hub/ingest/index.js';
 import { ok, type LedgeError, type Result } from '@/shared-kernel/result/index.js';
 import { scanDeviceEvidence, trailFor, type DeviceEvidence } from './evidence.js';
+import { copyKeyFor, type BootSignal } from '../marker/index.js';
 import {
   buildConservativeAbort,
   buildEvidenceCompletion,
@@ -327,8 +328,15 @@ const maxWatermark = (status: {
   return max;
 };
 
+/**
+ * EES §2.13 boot reconcile. `signal` is the crash-marker verdict for this wake
+ * (E2-T07 — an explicit INPUT, never probed here): the report embeds it with
+ * the §14.4/R16 copy path computed against this report's own lossRisk, so the
+ * card-gating law has exactly one evaluation site.
+ */
 export const reconcileBoot = async (
   deps: ReconcilerDeps,
+  signal: BootSignal,
 ): Promise<Result<BootReport, LedgeError>> => {
   const bootTs = deps.now();
   const gaps: string[] = [];
@@ -461,13 +469,15 @@ export const reconcileBoot = async (
       ? { ok: true, durableThrough: evidence.durableThrough }
       : probeReport;
 
+  const lossRisk = degraded !== null || assessLossRisk(finalProbe, resolutions);
   const report: BootReport = {
     schemaV: RECONCILE_REPORT_SCHEMA_V,
     deviceId: deps.deviceId,
     bootTs,
     outcome: outcomeOf(degraded, resolutions.length),
+    bootSignal: { ...signal, copyKey: copyKeyFor(signal.cause, lossRisk) },
     // §14.4: degraded boots are loss-risk by definition (scope unknown).
-    lossRisk: degraded !== null || assessLossRisk(finalProbe, resolutions),
+    lossRisk,
     journalProbe: finalProbe,
     intentsExamined: resolutions.length,
     resolutions,

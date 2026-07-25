@@ -13,6 +13,7 @@ import {
   missionId,
   observeThenClose,
   reconcile,
+  RECONCILER_KILL_POINTS,
   tabObserved,
   tabsParked,
   type ReconcileWorld,
@@ -158,12 +159,17 @@ const pointsFile = (): string[] =>
     .filter((l) => l.length > 0 && !l.startsWith('#'));
 
 describe('E2-T06 chaos — kill-point matrix (ops/chaos/points.txt)', () => {
-  it('fixture coverage spans the whole kill-point file', () => {
-    const covered = new Set(FIXTURES.map((f) => f.point));
-    for (const point of pointsFile()) {
-      expect(covered.has(point), `kill point ${point} lacks a reconciliation fixture`).toBe(true);
+  it('fixtures cover exactly this suite’s owned kill points (flow-partition law)', () => {
+    // Ownership partition: the reconciler owns RECONCILER_KILL_POINTS; boot.*
+    // points belong to the marker suite (E2-T07). Cross-suite partition
+    // exactness (file == both owners, disjoint) is constitution-asserted in
+    // the marker chaos suite — an orphan file line fails there; a phantom or
+    // missing reconciler fixture fails HERE.
+    expect(FIXTURES.map((f) => f.point).sort()).toEqual([...RECONCILER_KILL_POINTS].sort());
+    const file = new Set(pointsFile());
+    for (const point of RECONCILER_KILL_POINTS) {
+      expect(file.has(point), `kill point ${point} missing from ops/chaos/points.txt`).toBe(true);
     }
-    expect(FIXTURES).toHaveLength(pointsFile().length);
   });
 
   for (const fixture of FIXTURES) {
@@ -293,6 +299,7 @@ describe('E2-T06 — BootReport contract (v1)', () => {
     const report: BootReport = unwrap(await reconcile(w));
     expect(Object.keys(report).sort()).toEqual(
       [
+        'bootSignal', // E2-T07 · ADR-007/R16 marker signal (schema v1 completion)
         'bootTs',
         'crossCheck',
         'deviceId',
