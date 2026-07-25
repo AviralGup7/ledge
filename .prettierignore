@@ -3,3 +3,7 @@
 docs/governance/
 ops/fixtures/
 pnpm-lock.yaml
+
+# E2-T09: generated evidence artifacts — the evidence serializer (ops/chaos/evidence.ts)
+# OWNS the byte format (golden-equality gate; prettier must not re-canonicalize).
+ops/chaos/evidence/*.json

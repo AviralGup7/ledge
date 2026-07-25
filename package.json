@@ -36,7 +36,9 @@
     "test:property": "vitest run --project property",
     "test:contract": "vitest run --project contract",
     "test:security": "vitest run --project security",
-    "ci:all": "pnpm lint:format && pnpm lint && pnpm typecheck && pnpm check:deps && pnpm check:copy && pnpm check:errors && pnpm test && pnpm test:property && pnpm test:contract && pnpm test:security && pnpm build && pnpm check:bundle && pnpm check:egress && pnpm check:manifest && pnpm check:dep-policy"
+    "ci:all": "pnpm lint:format && pnpm lint && pnpm typecheck && pnpm check:deps && pnpm check:copy && pnpm check:errors && pnpm test && pnpm test:chaos && pnpm test:property && pnpm test:contract && pnpm test:security && pnpm build && pnpm check:bundle && pnpm check:egress && pnpm check:manifest && pnpm check:dep-policy",
+    "test:chaos": "vitest run --project chaos",
+    "test:chaos:evidence": "UPDATE_EVIDENCE=1 vitest run --project chaos ops/tests/chaos"
   },
   "dependencies": {
     "dexie": "^4.0.11"

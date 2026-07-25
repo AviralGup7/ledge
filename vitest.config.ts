@@ -61,7 +61,18 @@ export default defineConfig({
           name: 'unit',
           include: ['src/**/*.test.ts', 'ops/tests/unit/**/*.test.ts'],
           // Property suites are their own lane (FC_NUM_RUNS setup); never double-run here.
-          exclude: ['**/*.property.test.ts'],
+          // Chaos suites are their own lane (E2-T09; EES §8 gate naming) — `pnpm test:chaos`.
+          exclude: ['**/*.property.test.ts', '**/*.chaos.test.ts'],
+        },
+      },
+      {
+        resolve: projectResolve,
+        test: {
+          // E2-T09 · EES §8 chaos lane: kill-point matrix suites, the ops harness
+          // (driver + corrupted-journal seeds + fault injection + G1 evidence).
+          // Runs in ci:all (PR) and as the nightly 'chaos-harness' job (release gate).
+          name: 'chaos',
+          include: ['src/**/*.chaos.test.ts', 'ops/tests/chaos/**/*.test.ts'],
         },
       },
       {

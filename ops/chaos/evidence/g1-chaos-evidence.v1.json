@@ -1,0 +1,283 @@
+{
+  "corruptedSeeds": [
+    {
+      "bootOutcome": "recovered",
+      "damageClass": "rot-sealed",
+      "degraded": "evidence-scan",
+      "detected": true,
+      "journalFrozen": true,
+      "overlapRefused": true,
+      "prefixHonest": "none",
+      "resolutionsIssued": 0,
+      "seed": "seed-01",
+      "suspects": [
+        "crc-mismatch"
+      ]
+    },
+    {
+      "bootOutcome": "recovered",
+      "damageClass": "rot-open-tail",
+      "degraded": "evidence-scan",
+      "detected": true,
+      "journalFrozen": true,
+      "overlapRefused": true,
+      "prefixHonest": true,
+      "resolutionsIssued": 0,
+      "seed": "seed-02",
+      "suspects": [
+        "crc-mismatch"
+      ]
+    },
+    {
+      "bootOutcome": "recovered",
+      "damageClass": "crc-flip",
+      "degraded": "evidence-scan",
+      "detected": true,
+      "journalFrozen": true,
+      "overlapRefused": true,
+      "prefixHonest": "none",
+      "resolutionsIssued": 0,
+      "seed": "seed-03",
+      "suspects": [
+        "crc-mismatch"
+      ]
+    },
+    {
+      "bootOutcome": "recovered",
+      "damageClass": "checkpointed-rot",
+      "degraded": "evidence-scan",
+      "detected": true,
+      "journalFrozen": true,
+      "overlapRefused": true,
+      "prefixHonest": "none",
+      "resolutionsIssued": 0,
+      "seed": "seed-04",
+      "suspects": [
+        "crc-mismatch"
+      ]
+    },
+    {
+      "bootOutcome": "clean",
+      "damageClass": "head-drift",
+      "degraded": null,
+      "detected": true,
+      "journalFrozen": true,
+      "overlapRefused": false,
+      "prefixHonest": true,
+      "resolutionsIssued": 0,
+      "seed": "seed-05",
+      "suspects": [
+        "head-drift"
+      ]
+    }
+  ],
+  "gate": "G1",
+  "killPoints": [
+    {
+      "disposition": "none",
+      "eventsWrittenByReconcile": 0,
+      "evidenceTabs": [],
+      "intentsExamined": 0,
+      "liveLeftOpen": 0,
+      "lossRisk": false,
+      "outcome": "clean",
+      "owner": "reconciler",
+      "point": "park.commit-intent.before",
+      "securedCounted": 0
+    },
+    {
+      "disposition": "aborted-conservative",
+      "eventsWrittenByReconcile": 1,
+      "evidenceTabs": [],
+      "intentsExamined": 1,
+      "liveLeftOpen": 3,
+      "lossRisk": false,
+      "outcome": "reconciled",
+      "owner": "reconciler",
+      "point": "park.commit-intent.after",
+      "securedCounted": 0
+    },
+    {
+      "disposition": "aborted-conservative",
+      "eventsWrittenByReconcile": 1,
+      "evidenceTabs": [
+        901,
+        902
+      ],
+      "intentsExamined": 1,
+      "liveLeftOpen": 1,
+      "lossRisk": true,
+      "outcome": "reconciled",
+      "owner": "reconciler",
+      "point": "park.browser-close.mid-batch",
+      "securedCounted": 0
+    },
+    {
+      "disposition": "completed-evidence",
+      "eventsWrittenByReconcile": 1,
+      "evidenceTabs": [
+        901,
+        902,
+        903
+      ],
+      "intentsExamined": 1,
+      "liveLeftOpen": 0,
+      "lossRisk": false,
+      "outcome": "reconciled",
+      "owner": "reconciler",
+      "point": "park.commit-completion.before",
+      "securedCounted": 3
+    },
+    {
+      "disposition": "completed-safe",
+      "eventsWrittenByReconcile": 1,
+      "evidenceTabs": [],
+      "intentsExamined": 1,
+      "liveLeftOpen": 0,
+      "lossRisk": false,
+      "outcome": "reconciled",
+      "owner": "reconciler",
+      "point": "park.commit-completion.after",
+      "securedCounted": 0
+    },
+    {
+      "disposition": "deferred",
+      "eventsWrittenByReconcile": 0,
+      "evidenceTabs": [],
+      "intentsExamined": 1,
+      "liveLeftOpen": 0,
+      "lossRisk": true,
+      "outcome": "reconciled",
+      "owner": "reconciler",
+      "point": "resume.intent.after",
+      "securedCounted": 0
+    },
+    {
+      "disposition": "deferred",
+      "eventsWrittenByReconcile": 0,
+      "evidenceTabs": [],
+      "intentsExamined": 1,
+      "liveLeftOpen": 0,
+      "lossRisk": true,
+      "outcome": "reconciled",
+      "owner": "reconciler",
+      "point": "resume.window-create.mid",
+      "securedCounted": 0
+    },
+    {
+      "disposition": "deferred",
+      "eventsWrittenByReconcile": 0,
+      "evidenceTabs": [],
+      "intentsExamined": 1,
+      "liveLeftOpen": 0,
+      "lossRisk": true,
+      "outcome": "reconciled",
+      "owner": "reconciler",
+      "point": "resume.tab-create.mid-batch",
+      "securedCounted": 0
+    },
+    {
+      "disposition": "none",
+      "eventsWrittenByReconcile": 0,
+      "evidenceTabs": [],
+      "intentsExamined": 0,
+      "liveLeftOpen": 0,
+      "lossRisk": false,
+      "outcome": "clean",
+      "owner": "reconciler",
+      "point": "delete.commit.before",
+      "securedCounted": 0
+    },
+    {
+      "disposition": "deferred",
+      "eventsWrittenByReconcile": 0,
+      "evidenceTabs": [],
+      "intentsExamined": 1,
+      "liveLeftOpen": 0,
+      "lossRisk": true,
+      "outcome": "reconciled",
+      "owner": "reconciler",
+      "point": "delete.commit.after",
+      "securedCounted": 0
+    },
+    {
+      "disposition": "deferred",
+      "eventsWrittenByReconcile": 0,
+      "evidenceTabs": [],
+      "intentsExamined": 1,
+      "liveLeftOpen": 0,
+      "lossRisk": true,
+      "outcome": "reconciled",
+      "owner": "reconciler",
+      "point": "undo.apply.mid",
+      "securedCounted": 0
+    },
+    {
+      "disposition": "deferred",
+      "eventsWrittenByReconcile": 0,
+      "evidenceTabs": [],
+      "intentsExamined": 1,
+      "liveLeftOpen": 0,
+      "lossRisk": true,
+      "outcome": "reconciled",
+      "owner": "reconciler",
+      "point": "import.commit.chunk-mid",
+      "securedCounted": 0
+    },
+    {
+      "disposition": "deferred",
+      "eventsWrittenByReconcile": 0,
+      "evidenceTabs": [],
+      "intentsExamined": 1,
+      "liveLeftOpen": 0,
+      "lossRisk": true,
+      "outcome": "reconciled",
+      "owner": "reconciler",
+      "point": "import.commit.before-final-marker",
+      "securedCounted": 0
+    },
+    {
+      "disposition": "deferred",
+      "eventsWrittenByReconcile": 0,
+      "evidenceTabs": [],
+      "intentsExamined": 1,
+      "liveLeftOpen": 0,
+      "lossRisk": true,
+      "outcome": "reconciled",
+      "owner": "reconciler",
+      "point": "trash.sweep.mid",
+      "securedCounted": 0
+    },
+    {
+      "disposition": "deferred",
+      "eventsWrittenByReconcile": 0,
+      "evidenceTabs": [],
+      "intentsExamined": 1,
+      "liveLeftOpen": 0,
+      "lossRisk": true,
+      "outcome": "reconciled",
+      "owner": "reconciler",
+      "point": "archive.conclude.mid.artifact-write",
+      "securedCounted": 0
+    },
+    {
+      "cause": "crashed",
+      "copyKey": "msg.recovery.crashed",
+      "followUpCause": "warm-recycle",
+      "owner": "marker",
+      "point": "boot.marker.arm"
+    },
+    {
+      "cause": "updated",
+      "copyKey": "msg.recovery.updated",
+      "followUpCause": "crashed",
+      "owner": "marker",
+      "point": "boot.marker.stamp"
+    }
+  ],
+  "pointsCount": 17,
+  "pointsFileDigest": "c216c3e0b49ef454d968f80c796c70dd5bf54d83773f6f1ff22b006195aab87e",
+  "reportDigest": "3eec79e52e7d6131bd1a045c7c40b3179935a4e420422d4c985eada9f455d382",
+  "schemaV": 1,
+  "suite": "E2-T09"
+}

@@ -9,147 +9,26 @@ import { readFileSync } from 'node:fs';
 import {
   acceptIntent,
   browserTabId,
+  KILL_POINT_FIXTURES,
   makeWorld,
   missionId,
   observeThenClose,
   reconcile,
   RECONCILER_KILL_POINTS,
-  tabObserved,
   tabsParked,
-  type ReconcileWorld,
 } from './testkit.js';
-import type { BootReport, IntentDisposition } from './types.js';
+import type { BootReport } from './types.js';
 
 const unwrap = <T, E>(r: { ok: true; value: T } | { ok: false; error: E }): T => {
   if (!r.ok) throw new Error(`unexpected err: ${JSON.stringify(r.error)}`);
   return r.value;
 };
 
-interface PointExpect {
-  readonly disposition: IntentDisposition | null; // null ⇒ nothing pending (clean)
-  readonly state: 'done' | 'aborted' | 'intent' | 'absent';
-}
-
-interface PointFixture {
-  readonly point: string;
-  readonly setup: (w: ReconcileWorld) => Promise<string | null>; // intentId or null
-  readonly expected: PointExpect;
-  /** Park intents: total scope refs for the zero-loss identity secured+left==refs. */
-  readonly scopeRefs?: number;
-}
-
-const parkScope = { tabIds: [browserTabId(1), browserTabId(2), browserTabId(3)] };
-
-const FIXTURES: readonly PointFixture[] = [
-  {
-    point: 'park.commit-intent.before',
-    setup: async () => null, // killed before the hinged commit — nothing durable
-    expected: { disposition: null, state: 'absent' },
-  },
-  {
-    point: 'park.commit-intent.after',
-    setup: async (w) => acceptIntent(w, 1, 'ParkAll', parkScope),
-    expected: { disposition: 'aborted-conservative', state: 'aborted' },
-    scopeRefs: 3,
-  },
-  {
-    point: 'park.browser-close.mid-batch',
-    setup: async (w) => {
-      const id = await acceptIntent(w, 1, 'ParkAll', parkScope);
-      await observeThenClose(w, [1, 2]); // 2 of 3 closes landed
-      return id;
-    },
-    expected: { disposition: 'aborted-conservative', state: 'aborted' },
-    scopeRefs: 3,
-  },
-  {
-    point: 'park.commit-completion.before',
-    setup: async (w) => {
-      const id = await acceptIntent(w, 1, 'ParkAll', parkScope);
-      await observeThenClose(w, [1, 2, 3]); // every close provable, event not yet written
-      return id;
-    },
-    expected: { disposition: 'completed-evidence', state: 'done' },
-    scopeRefs: 3,
-  },
-  {
-    point: 'park.commit-completion.after',
-    setup: async (w) => {
-      const id = await acceptIntent(w, 1, 'ParkAll', parkScope);
-      await observeThenClose(w, [1, 2, 3]);
-      await w.append([tabsParked(w, id, 3)]); // completion durable, row-flip never landed
-      return id;
-    },
-    expected: { disposition: 'completed-safe', state: 'done' },
-    scopeRefs: 3,
-  },
-  {
-    point: 'resume.intent.after',
-    setup: async (w) =>
-      acceptIntent(w, 1, 'ResumeMission', { missionId: missionId(1), mode: 'everything' }),
-    expected: { disposition: 'deferred', state: 'intent' },
-  },
-  {
-    point: 'resume.window-create.mid',
-    setup: async (w) => {
-      const id = await acceptIntent(w, 1, 'ResumeMission', {
-        missionId: missionId(1),
-        mode: 'everything',
-      });
-      await w.append([tabObserved(w, 7)]); // a tab materialized mid-resume: no proof either way
-      return id;
-    },
-    expected: { disposition: 'deferred', state: 'intent' },
-  },
-  {
-    point: 'resume.tab-create.mid-batch',
-    setup: async (w) => {
-      const id = await acceptIntent(w, 1, 'ResumeMission', {
-        missionId: missionId(1),
-        mode: 'everything',
-      });
-      await w.append([tabObserved(w, 7), tabObserved(w, 8)]);
-      return id;
-    },
-    expected: { disposition: 'deferred', state: 'intent' },
-  },
-  {
-    point: 'delete.commit.before',
-    setup: async () => null,
-    expected: { disposition: null, state: 'absent' },
-  },
-  {
-    point: 'delete.commit.after',
-    setup: async (w) => acceptIntent(w, 1, 'DeleteEntity', { kind: 'mission', id: missionId(1) }),
-    expected: { disposition: 'deferred', state: 'intent' },
-  },
-  {
-    point: 'undo.apply.mid',
-    setup: async (w) => acceptIntent(w, 1, 'Undo', { actionId: 'a1' }),
-    expected: { disposition: 'deferred', state: 'intent' },
-  },
-  {
-    point: 'import.commit.chunk-mid',
-    setup: async (w) => acceptIntent(w, 1, 'ImportCommit', { importId: 'imp-1', chunk: 3 }),
-    expected: { disposition: 'deferred', state: 'intent' },
-  },
-  {
-    point: 'import.commit.before-final-marker',
-    setup: async (w) =>
-      acceptIntent(w, 1, 'ImportCommit', { importId: 'imp-1', chunk: 5, final: false }),
-    expected: { disposition: 'deferred', state: 'intent' },
-  },
-  {
-    point: 'trash.sweep.mid',
-    setup: async (w) => acceptIntent(w, 1, 'EmptyTrash', { olderThanDays: 30 }),
-    expected: { disposition: 'deferred', state: 'intent' },
-  },
-  {
-    point: 'archive.conclude.mid.artifact-write',
-    setup: async (w) => acceptIntent(w, 1, 'ConcludeMission', { missionId: missionId(1) }),
-    expected: { disposition: 'deferred', state: 'intent' },
-  },
-];
+// The point ⇒ (torn-state, expectation) binding lives in the testkit catalog
+// (KILL_POINT_FIXTURES): ONE definition consumed by this suite (law depth) and
+// by the E2-T09 harness driver in ops/chaos (sweep + G1 evidence). A fixture
+// added here without the catalog — or vice versa — fails the coverage it below.
+const FIXTURES = KILL_POINT_FIXTURES;
 
 /** Every enumerated point must exist in ops/chaos/points.txt (PR-template law). */
 const pointsFile = (): string[] =>

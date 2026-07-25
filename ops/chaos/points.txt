@@ -29,3 +29,6 @@ boot.marker.stamp
 # Flow-partition law: park/resume/delete/undo/import/trash/archive points are owned by
 # src/infrastructure/recovery/reconciler (E2-T06); boot.* points by recovery/marker (E2-T07).
 # The exact partition (file == owners, disjoint) is constitution-asserted across both suites.
+# E2-T09 · harness v1: every line above is DRIVEN by ops/chaos/driver.ts via manifest.ts
+# (fail-closed binding; orphan line = red gate), folded into the G1 evidence golden
+# (ops/chaos/evidence/g1-chaos-evidence.v1.json) and run by the nightly chaos-harness job.

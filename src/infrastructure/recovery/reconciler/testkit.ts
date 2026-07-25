@@ -17,7 +17,7 @@ import { createJournal } from '@/infrastructure/journal/index.js';
 import { createIntentLedger } from '@/infrastructure/intents/index.js';
 import { createV1ProjectionEngine } from '@/infrastructure/projections/index.js';
 import { DEV_A, openEngine, testId, uniqueKey } from '@/infrastructure/journal/core/testkit.js';
-import type { ReconcilerDeps } from './types.js';
+import type { IntentDisposition, ReconcilerDeps } from './types.js';
 import { reconcileBoot } from './reconciler.js';
 
 export { DEV_A, testId, uniqueKey };
@@ -64,8 +64,18 @@ export interface ReconcileWorld {
   seq: number;
 }
 
-export const makeWorld = async (): Promise<ReconcileWorld> => {
-  const engine = await openEngine();
+export interface ReconcileWorldOptions {
+  /**
+   * Pre-opened engine override (E2-T09 chaos seam): the harness drives points
+   * through a FAULT-INJECTING engine proxy; suites keep the default in-memory.
+   * Must already be open (same makeWorld law: this kit never opens what it
+   * didn't create, and never closes what it was handed).
+   */
+  readonly engine?: StorageEnginePort;
+}
+
+export const makeWorld = async (options: ReconcileWorldOptions = {}): Promise<ReconcileWorld> => {
+  const engine = options.engine ?? (await openEngine());
   const journal = createJournal(engine);
   const ledger = createIntentLedger({ engine, journal });
   const projections = createV1ProjectionEngine({ engine, journal, onDelta: () => undefined });
@@ -269,6 +279,159 @@ export const RECONCILER_KILL_POINTS: readonly string[] = [
   'import.commit.before-final-marker',
   'trash.sweep.mid',
   'archive.conclude.mid.artifact-write',
+];
+
+// ---------------------------------------------------------------------------
+// E2-T09 · kill-point fixture catalog — the CANONICAL point ⇒ (torn-state
+// setup, resolution expectation) binding, lifted here from the chaos suite so
+// the central harness driver (ops/chaos) executes THE SAME torn states — one
+// definition, two consumers (the suite asserts per-point law in depth; the
+// driver sweeps all points + accumulates G1 evidence). Editing here moves
+// both; the flow-partition constitution asserts the point set is exactly
+// RECONCILER_KILL_POINTS.
+// ---------------------------------------------------------------------------
+
+/** What a correct reconciliation of the kill-point's torn state must conclude. */
+export interface KillPointExpectation {
+  /** null ⇒ the kill left nothing durable; boot is clean. */
+  readonly disposition: IntentDisposition | null;
+  readonly state: 'done' | 'aborted' | 'intent' | 'absent';
+}
+
+export interface KillPointFixture {
+  readonly point: string;
+  /** Build the durable torn state; returns the pending intentId (or null). */
+  readonly setup: (w: ReconcileWorld) => Promise<string | null>;
+  readonly expected: KillPointExpectation;
+  /** Park intents: total scope refs for the zero-loss identity secured+left==refs. */
+  readonly scopeRefs?: number;
+}
+
+// Fixture ordinals (named per §2 — testkit is not a *.test.ts file, the
+// magic-number law binds here exactly as in production).
+const SCOPE_TAB_A = 1;
+const SCOPE_TAB_B = 2;
+const SCOPE_TAB_C = 3;
+const RESUME_TAB_A = 7;
+const RESUME_TAB_B = 8;
+/** The durable constants named in fixture rows (scope refs per park point). */
+export const PARK_POINT_SCOPE_REFS = 3;
+
+const PARK_SCOPE = {
+  tabIds: [browserTabId(SCOPE_TAB_A), browserTabId(SCOPE_TAB_B), browserTabId(SCOPE_TAB_C)],
+};
+const CLOSE_PARTIAL = [SCOPE_TAB_A, SCOPE_TAB_B] as const;
+const CLOSE_ALL = [SCOPE_TAB_A, SCOPE_TAB_B, SCOPE_TAB_C] as const;
+
+export const KILL_POINT_FIXTURES: readonly KillPointFixture[] = [
+  {
+    point: 'park.commit-intent.before',
+    setup: async () => null, // killed before the hinged commit — nothing durable
+    expected: { disposition: null, state: 'absent' },
+  },
+  {
+    point: 'park.commit-intent.after',
+    setup: async (w) => acceptIntent(w, 1, 'ParkAll', PARK_SCOPE),
+    expected: { disposition: 'aborted-conservative', state: 'aborted' },
+    scopeRefs: PARK_POINT_SCOPE_REFS,
+  },
+  {
+    point: 'park.browser-close.mid-batch',
+    setup: async (w) => {
+      const id = await acceptIntent(w, 1, 'ParkAll', PARK_SCOPE);
+      await observeThenClose(w, CLOSE_PARTIAL); // 2 of 3 closes landed
+      return id;
+    },
+    expected: { disposition: 'aborted-conservative', state: 'aborted' },
+    scopeRefs: PARK_POINT_SCOPE_REFS,
+  },
+  {
+    point: 'park.commit-completion.before',
+    setup: async (w) => {
+      const id = await acceptIntent(w, 1, 'ParkAll', PARK_SCOPE);
+      await observeThenClose(w, CLOSE_ALL); // every close provable, event not yet written
+      return id;
+    },
+    expected: { disposition: 'completed-evidence', state: 'done' },
+    scopeRefs: PARK_POINT_SCOPE_REFS,
+  },
+  {
+    point: 'park.commit-completion.after',
+    setup: async (w) => {
+      const id = await acceptIntent(w, 1, 'ParkAll', PARK_SCOPE);
+      await observeThenClose(w, CLOSE_ALL);
+      await w.append([tabsParked(w, id, PARK_POINT_SCOPE_REFS)]); // completion durable, row-flip never landed
+      return id;
+    },
+    expected: { disposition: 'completed-safe', state: 'done' },
+    scopeRefs: PARK_POINT_SCOPE_REFS,
+  },
+  {
+    point: 'resume.intent.after',
+    setup: async (w) =>
+      acceptIntent(w, 1, 'ResumeMission', { missionId: missionId(1), mode: 'everything' }),
+    expected: { disposition: 'deferred', state: 'intent' },
+  },
+  {
+    point: 'resume.window-create.mid',
+    setup: async (w) => {
+      const id = await acceptIntent(w, 1, 'ResumeMission', {
+        missionId: missionId(1),
+        mode: 'everything',
+      });
+      await w.append([tabObserved(w, RESUME_TAB_A)]); // a tab materialized mid-resume: no proof either way
+      return id;
+    },
+    expected: { disposition: 'deferred', state: 'intent' },
+  },
+  {
+    point: 'resume.tab-create.mid-batch',
+    setup: async (w) => {
+      const id = await acceptIntent(w, 1, 'ResumeMission', {
+        missionId: missionId(1),
+        mode: 'everything',
+      });
+      await w.append([tabObserved(w, RESUME_TAB_A), tabObserved(w, RESUME_TAB_B)]);
+      return id;
+    },
+    expected: { disposition: 'deferred', state: 'intent' },
+  },
+  {
+    point: 'delete.commit.before',
+    setup: async () => null,
+    expected: { disposition: null, state: 'absent' },
+  },
+  {
+    point: 'delete.commit.after',
+    setup: async (w) => acceptIntent(w, 1, 'DeleteEntity', { kind: 'mission', id: missionId(1) }),
+    expected: { disposition: 'deferred', state: 'intent' },
+  },
+  {
+    point: 'undo.apply.mid',
+    setup: async (w) => acceptIntent(w, 1, 'Undo', { actionId: 'a1' }),
+    expected: { disposition: 'deferred', state: 'intent' },
+  },
+  {
+    point: 'import.commit.chunk-mid',
+    setup: async (w) => acceptIntent(w, 1, 'ImportCommit', { importId: 'imp-1', chunk: 3 }),
+    expected: { disposition: 'deferred', state: 'intent' },
+  },
+  {
+    point: 'import.commit.before-final-marker',
+    setup: async (w) =>
+      acceptIntent(w, 1, 'ImportCommit', { importId: 'imp-1', chunk: 5, final: false }),
+    expected: { disposition: 'deferred', state: 'intent' },
+  },
+  {
+    point: 'trash.sweep.mid',
+    setup: async (w) => acceptIntent(w, 1, 'EmptyTrash', { olderThanDays: 30 }),
+    expected: { disposition: 'deferred', state: 'intent' },
+  },
+  {
+    point: 'archive.conclude.mid.artifact-write',
+    setup: async (w) => acceptIntent(w, 1, 'ConcludeMission', { missionId: missionId(1) }),
+    expected: { disposition: 'deferred', state: 'intent' },
+  },
 ];
 
 /** Type snapshot of one resolution for determinism comparisons (volatile fields out). */
