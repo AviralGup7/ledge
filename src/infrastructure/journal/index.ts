@@ -5,7 +5,7 @@ import { createJournalAppender } from './core/appender.js';
 import { createJournalScanner } from './core/scanner.js';
 
 export { createJournalAppender } from './core/appender.js';
-export { SEGMENT_ENTRY_CAP, JOURNAL_FORMAT_V } from './core/types.js';
+export { SEGMENT_ENTRY_CAP, JOURNAL_FORMAT_V, META_JOURNAL_HEADS_KEY } from './core/types.js';
 export type { JournalEntryRecord, JournalSegmentRecord } from './core/types.js';
 
 /**

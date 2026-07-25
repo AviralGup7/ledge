@@ -26,7 +26,11 @@ export type Watermark = {
 export type DeltaOp =
   | { readonly kind: 'upsert'; readonly key: string; readonly record: StoredRecord }
   | { readonly kind: 'remove'; readonly key: string }
-  | { readonly kind: 'patch'; readonly key: string; readonly fields: Readonly<Record<string, unknown>> };
+  | {
+      readonly kind: 'patch';
+      readonly key: string;
+      readonly fields: Readonly<Record<string, unknown>>;
+    };
 
 /** §3.5 ViewDelta frame; ops ≤ FRAME_OPS_CAP (engine chunks larger bursts). */
 export type ViewDeltaFrame = {

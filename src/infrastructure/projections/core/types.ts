@@ -13,8 +13,7 @@ export type WatermarkRow = Watermark & {
 
 export type WatermarkTable = Record<string, WatermarkRow>;
 
-export const watermarkKeyFor = (view: ViewName, deviceId: string): string =>
-  `${view}:${deviceId}`;
+export const watermarkKeyFor = (view: ViewName, deviceId: string): string => `${view}:${deviceId}`;
 
 /** Events per apply-chunk txn: a kill mid-drive resumes from the last committed
  *  watermark — the recovery-after-interrupted-replay law. */
