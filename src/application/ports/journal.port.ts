@@ -114,6 +114,68 @@ export interface CheckpointResult {
   readonly stamped: readonly CheckpointStamp[];
 }
 
+/**
+ * E2-T11 · purge-exclusion sweep input — one entry per COMMITTED purge chain
+ * (EES §4 TrashPurged row: sweeper → compaction feed).
+ */
+export interface PurgeChainRef {
+  readonly kind: string;
+  readonly id: string;
+  readonly purgedAt: number;
+  readonly purgeEpoch: number;
+}
+
+/** What the authority asks the journal to physically exclude, per device. */
+export interface CompactionPlan {
+  readonly deviceId: DeviceId;
+  /** Exclusion horizon: entries with seq ≤ throughSeq are purge-eligible. */
+  readonly throughSeq: number;
+  readonly purgeChains: readonly PurgeChainRef[];
+  /** Segments per chunk transaction (≥1; default lives in the compactor). */
+  readonly chunkSegments?: number | undefined;
+}
+
+/** Per-device compaction baseline (meta.purgeEpoch storage inventory row).
+ *  cursorSeqStart is a deletion-invariant seq anchor (see core/types.ts). */
+export interface CompactionBaseline {
+  readonly schemaV: 1;
+  readonly deviceId: DeviceId;
+  readonly status: 'running' | 'done';
+  readonly epoch: number;
+  readonly throughSeq: number;
+  readonly planDigest: string;
+  readonly cursorSeqStart: number | null;
+  readonly entriesExcluded: number;
+  readonly excludedDigest: string;
+}
+
+/** Audit row for one physically excluded entry. */
+export interface ExcludedMatch {
+  readonly seq: number;
+  readonly batchIndex: number;
+  readonly eventId: string;
+  readonly chainKind: string;
+  readonly chainId: string;
+}
+
+/** Outcome of one compact() (counts always complete; sample capped). */
+export interface CompactionReport {
+  readonly schemaV: 1;
+  readonly deviceId: string;
+  readonly epoch: number;
+  readonly planDigest: string;
+  readonly resumed: boolean;
+  readonly noOp: boolean;
+  readonly throughSeq: number;
+  readonly segmentsInWindow: number;
+  readonly segmentsRewritten: number;
+  readonly segmentsDeleted: number;
+  readonly entriesExcluded: number;
+  readonly excludedSample: readonly ExcludedMatch[];
+  readonly excludedDigest: string;
+  readonly checkpoints: readonly CheckpointStamp[];
+}
+
 export interface JournalPort {
   /**
    * Append one contiguous batch (all envelopes same deviceId, hlc.seq strictly
@@ -163,6 +225,19 @@ export interface JournalPort {
    * (details.segmentId = first suspect) and nothing is written. Idempotent.
    */
   checkpoint(): Promise<Result<CheckpointResult, LedgeError>>;
+  /**
+   * E2-T11 · physical compaction WITH purge exclusion (ADR-004 collapse law;
+   * ADR-020 "physically rewrites segments excluding purged events"; EES §2.8
+   * invariant + §5 global law 4). Chunked + resumable: one segment batch per
+   * transaction, every inter-chunk state scan-lawful, re-running with the same
+   * planDigest resumes to the byte-identical end state. Laws: horizon < head
+   * (open tail never in window) · exclusion only from eligible entries ·
+   * fully-excluded rows physically deleted · survivors byte-identical ·
+   * meta.purgeEpoch epochs monotonic · checkpoint restamped at close.
+   */
+  compact(plan: CompactionPlan): Promise<Result<CompactionReport, LedgeError>>;
+  /** The device's compaction baseline (meta.purgeEpoch row), when one exists. */
+  compactionState(deviceId: DeviceId): Promise<Result<CompactionBaseline | null, LedgeError>>;
 }
 
 export type { DeviceId, EventEnvelope, Hlc, StoredEvent };

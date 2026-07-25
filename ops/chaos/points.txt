@@ -25,10 +25,22 @@ archive.conclude.mid.artifact-write
 #                       wake; the next boot must see a fresh stamp ⇒ 'updated').
 boot.marker.arm
 boot.marker.stamp
+# E2-T11 · compaction durability boundaries (ADR-004 collapse + ADR-020 physical purge):
+#   compact.segment-rewrite.mid   — kill after some-but-not-all chunk txns:
+#                                   running baseline at a mid-window cursor +
+#                                   a prefix of the sealed rewrites.
+#   compact.baseline-flip.before  — all chunks committed, status flip never
+#                                   happened (running baseline, exhausted cursor).
+#   compact.checkpoint.mid        — baseline flipped done, the checkpoint
+#                                   restamp over rewritten bytes never ran.
+compact.segment-rewrite.mid
+compact.baseline-flip.before
+compact.checkpoint.mid
 # Notes: seed corpus += every point above at Tier-1 gate (EES §8). Never remove points; deprecate by comment only.
 # Flow-partition law: park/resume/delete/undo/import/trash/archive points are owned by
-# src/infrastructure/recovery/reconciler (E2-T06); boot.* points by recovery/marker (E2-T07).
-# The exact partition (file == owners, disjoint) is constitution-asserted across both suites.
+# src/infrastructure/recovery/reconciler (E2-T06); boot.* points by recovery/marker (E2-T07);
+# compact.* points by infrastructure/journal/compact (E2-T11).
+# The exact partition (file == owners, disjoint) is constitution-asserted across the suites.
 # E2-T09 · harness v1: every line above is DRIVEN by ops/chaos/driver.ts via manifest.ts
 # (fail-closed binding; orphan line = red gate), folded into the G1 evidence golden
 # (ops/chaos/evidence/g1-chaos-evidence.v1.json) and run by the nightly chaos-harness job.

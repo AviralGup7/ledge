@@ -273,11 +273,38 @@
       "followUpCause": "crashed",
       "owner": "marker",
       "point": "boot.marker.stamp"
+    },
+    {
+      "byteEqualToTwin": true,
+      "entriesExcluded": 2,
+      "noOp": false,
+      "owner": "compact",
+      "point": "compact.segment-rewrite.mid",
+      "resumed": true,
+      "tornScanOk": true
+    },
+    {
+      "byteEqualToTwin": true,
+      "entriesExcluded": 2,
+      "noOp": false,
+      "owner": "compact",
+      "point": "compact.baseline-flip.before",
+      "resumed": true,
+      "tornScanOk": true
+    },
+    {
+      "byteEqualToTwin": true,
+      "entriesExcluded": 2,
+      "noOp": true,
+      "owner": "compact",
+      "point": "compact.checkpoint.mid",
+      "resumed": false,
+      "tornScanOk": true
     }
   ],
-  "pointsCount": 17,
-  "pointsFileDigest": "c216c3e0b49ef454d968f80c796c70dd5bf54d83773f6f1ff22b006195aab87e",
-  "reportDigest": "3eec79e52e7d6131bd1a045c7c40b3179935a4e420422d4c985eada9f455d382",
+  "pointsCount": 20,
+  "pointsFileDigest": "135fe2d7331956d465e560788caa851f2e2dfc2bdde2b51188295dd042b70d66",
+  "reportDigest": "0901e619f39ccea91d124a5db8c815c31729bb842a8224dc9061a4cd036a2c44",
   "schemaV": 1,
   "suite": "E2-T09"
 }

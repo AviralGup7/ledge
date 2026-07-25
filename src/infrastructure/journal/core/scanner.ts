@@ -17,6 +17,8 @@ import {
   JOURNAL_FORMAT_V,
   META_CHECKPOINT_KEY,
   META_JOURNAL_HEADS_KEY,
+  META_PURGE_EPOCH_KEY,
+  type CompactionBaseline,
   type DeviceStreamHead,
   type JournalEntryRecord,
   type JournalSegmentRecord,
@@ -41,7 +43,32 @@ export interface ChainParams {
    * (WAL design — bytes at/below the checkpoint are out of the cheap path's window).
    */
   readonly fromSeq: number;
+  /**
+   * E2-T11 baseline (L6): when present, seq gaps at/≤ baseline.throughSeq are
+   * lawful purge exclusions (status running|done alike — an in-flight sweep
+   * must never scan-suspect), while every seq above the horizon keeps the
+   * strict +1 chain law. Absent ⇒ pre-compaction law, byte for byte.
+   */
+  readonly baseline?: CompactionBaseline | undefined;
 }
+
+/**
+ * Adjacent-seq law (one home for the flat walk AND the segment-boundary
+ * handoff): dense chaining always lawful; a gap is lawful ONLY inside (or at
+ * the upper edge of) the baseline's exclusion horizon — strictly increasing,
+ * and the first entry above the horizon must be exactly throughSeq+1 (the
+ * tail beyond the sweep is untouched, hence dense from there).
+ */
+const lawfulSeqPair = (
+  prevSeq: number,
+  nextSeq: number,
+  baseline: CompactionBaseline | undefined,
+): boolean => {
+  if (nextSeq === prevSeq + 1) return true;
+  if (baseline === undefined) return false;
+  const horizon = baseline.throughSeq;
+  return prevSeq <= horizon && nextSeq > prevSeq && (nextSeq <= horizon || nextSeq === horizon + 1);
+};
 
 /**
  * Verify one device stream's CRC/chain/seal/head/lamport laws. Total and pure: every
@@ -105,7 +132,10 @@ export function verifyDeviceChain(params: ChainParams): {
 
   // Chain law over the window: entries flatten in segment order and must present a
   // contiguous seq run starting exactly at fromSeq (or at 1 for full walks of streams
-  // whose first segment IS the origin — compaction baselines arrive with E2-T11).
+  // whose first segment IS the origin). E2-T11 delivered the relaxation named below:
+  // with a compaction baseline, missing seqs at/≤ its horizon are lawful purge
+  // exclusions (origin may land late; pairs may skip) — law L6 in compact/types.ts.
+  const baseline = params.baseline;
   if (head !== undefined) {
     const flat: JournalEntryRecord[] = [];
     for (const segment of sorted) {
@@ -115,7 +145,13 @@ export function verifyDeviceChain(params: ChainParams): {
     }
     if (flat.length > 0) {
       const first = flat.at(0);
-      if (first !== undefined && first.seq !== fromSeq) {
+      // Origin law: the run must start exactly at fromSeq — UNLESS everything
+      // below the first survivor sat inside the exclusion window (first-1 ≤
+      // horizon), which is precisely what a baseline certifies.
+      const originLawful =
+        first !== undefined &&
+        (first.seq === fromSeq || (baseline !== undefined && first.seq - 1 <= baseline.throughSeq));
+      if (!originLawful) {
         push({
           segmentId: sorted.at(0)?.segmentId ?? `${deviceId}:?`,
           reason: 'chain-sequence',
@@ -128,7 +164,7 @@ export function verifyDeviceChain(params: ChainParams): {
       let prevLamport: number | undefined;
       const ownerSegment = sorted.at(0)?.segmentId ?? `${deviceId}:?`;
       for (const entry of flat) {
-        if (prevSeq !== undefined && entry.seq !== prevSeq + 1) {
+        if (prevSeq !== undefined && !lawfulSeqPair(prevSeq, entry.seq, baseline)) {
           push({ segmentId: ownerSegment, reason: 'chain-sequence' });
         }
         if (entry.batchIndex <= prevBatch && entry.seq === prevSeq) {
@@ -154,7 +190,7 @@ export function verifyDeviceChain(params: ChainParams): {
         const prevTail = prev.entries.at(-1);
         if (prevTail !== undefined && cur.entries.length > 0) {
           const curFirst = cur.entries.at(0);
-          if (curFirst !== undefined && curFirst.seq !== prevTail.seq + 1) {
+          if (curFirst !== undefined && !lawfulSeqPair(prevTail.seq, curFirst.seq, baseline)) {
             push({ segmentId: cur.segmentId, reason: 'chain-sequence' });
           }
         }
@@ -221,6 +257,7 @@ const runScan = (
   allDevices: string[],
   fromSeqForDevice: (deviceId: string) => number,
   coverage: JournalIntegrityReport['coverage'],
+  baselines: Record<string, CompactionBaseline> = {},
 ): JournalIntegrityReport => {
   const suspects: SegmentSuspect[] = [];
   const devices: DeviceScanSummary[] = [];
@@ -232,6 +269,7 @@ const runScan = (
       segments: owned,
       head,
       fromSeq: fromSeqForDevice(deviceId),
+      ...(baselines[deviceId] !== undefined ? { baseline: baselines[deviceId] } : {}),
     });
     suspects.push(...run.suspects);
     devices.push(run.summary);
@@ -257,12 +295,15 @@ export function createJournalScanner(engine: StorageEnginePort): {
         const { allSegments, heads, allDevices } = await collectDevices(events, meta);
         const ptrRow = await meta.get(META_CHECKPOINT_KEY);
         const ptrs = (ptrRow?.value ?? {}) as CheckpointTable;
+        const baseRow = await meta.get(META_PURGE_EPOCH_KEY);
+        const baselines = (baseRow?.value ?? {}) as Record<string, CompactionBaseline>;
         return runScan(
           allSegments,
           heads,
           allDevices,
           (deviceId) => (ptrs[deviceId]?.throughSeq ?? 0) + 1,
           'tail',
+          baselines,
         );
       }),
 
@@ -271,8 +312,10 @@ export function createJournalScanner(engine: StorageEnginePort): {
         const events = tx.table<JournalSegmentRecord>('events');
         const meta = tx.table<MetaRow>('meta');
         const { allSegments, heads, allDevices } = await collectDevices(events, meta);
-        // Full walk: every byte is in window.
-        return runScan(allSegments, heads, allDevices, () => 1, 'full');
+        const baseRow = await meta.get(META_PURGE_EPOCH_KEY);
+        const baselines = (baseRow?.value ?? {}) as Record<string, CompactionBaseline>;
+        // Full walk: every byte is in window — with any compaction baselines (L6).
+        return runScan(allSegments, heads, allDevices, () => 1, 'full', baselines);
       }),
 
     checkpoint: () =>
@@ -280,7 +323,9 @@ export function createJournalScanner(engine: StorageEnginePort): {
         const events = tx.table<JournalSegmentRecord>('events');
         const meta = tx.table<MetaRow>('meta');
         const { allSegments, heads, allDevices } = await collectDevices(events, meta);
-        const report = runScan(allSegments, heads, allDevices, () => 1, 'full');
+        const baseRow = await meta.get(META_PURGE_EPOCH_KEY);
+        const baselines = (baseRow?.value ?? {}) as Record<string, CompactionBaseline>;
+        const report = runScan(allSegments, heads, allDevices, () => 1, 'full', baselines);
         // §2.8 invariant: a checkpoint over suspect bytes would lie about restorability.
         if (report.status === 'suspect') {
           const first = report.suspects.at(0);

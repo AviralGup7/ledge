@@ -259,7 +259,8 @@ export const reconcile = (w: ReconcileWorld, deps?: ReconcilerDeps, signal?: Boo
 
 /**
  * Kill points THIS suite owns in ops/chaos/points.txt (flow-partition law:
- * boot.* points belong to the marker suite — the partition is constitution-
+ * boot.* points belong to the marker suite, compact.* to journal/compact
+ * (E2-T11) — the partition is constitution-
  * asserted across both suites so an orphan file line or a phantom fixture
  * fails CI, from either side).
  */

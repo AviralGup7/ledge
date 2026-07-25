@@ -40,7 +40,22 @@ export interface MarkerPointOutcome {
   readonly followUpCause: string;
 }
 
-export type KillPointOutcome = ReconcilerPointOutcome | MarkerPointOutcome;
+export interface CompactPointOutcome {
+  readonly owner: 'compact';
+  readonly point: string;
+  /** scanFull was clean over the torn image (running/done baseline law L6). */
+  readonly tornScanOk: boolean;
+  /** compact() over the torn image resumed a running baseline. */
+  readonly resumed: boolean;
+  /** ...or replayed a done baseline as a byte-true no-op that restamps. */
+  readonly noOp: boolean;
+  /** Epoch totals after convergence (carried + fresh exclusions). */
+  readonly entriesExcluded: number;
+  /** L7: durable truth (events+meta) byte-identical to the uninterrupted twin. */
+  readonly byteEqualToTwin: boolean;
+}
+
+export type KillPointOutcome = ReconcilerPointOutcome | MarkerPointOutcome | CompactPointOutcome;
 
 export interface CorruptedSeedOutcome {
   readonly seed: string;

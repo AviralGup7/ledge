@@ -1,14 +1,16 @@
 // E2-T09 · chaos manifest — the machine-readable binding from every
 // ops/chaos/points.txt line to (a) its OWNER suite (flow-partition law:
-// reconciler owns the flow boundaries, marker owns the boot markers; the
-// cross-suite constitution asserts the partition is exact and disjoint) and
+// reconciler owns the flow boundaries, marker owns the boot markers,
+// journal/compact owns the E2-T11 sweep boundaries; the cross-suite
+// constitution asserts the partition is exact and disjoint) and
 // (b) the expectation the driver sweep must observe.
 //
 // The reconciler half is DERIVED from KILL_POINT_FIXTURES (the single
 // point⇒(torn-state, expectation) catalog lifted into the reconciler testkit)
 // — the manifest never restates it. The marker half pins the canonical
 // classification verdict per boot point (the owner suite asserts the same
-// laws in depth).
+// laws in depth). The compact half pins the resume verdict per sweep point.
+import { COMPACT_KILL_POINTS } from '@/infrastructure/journal/compact/testkit.js';
 import type { BootCause } from '@/infrastructure/recovery/marker/index.js';
 import { BOOT_MARKER_KILL_POINTS } from '@/infrastructure/recovery/marker/testkit.js';
 import {
@@ -16,7 +18,7 @@ import {
   type KillPointFixture,
 } from '@/infrastructure/recovery/reconciler/testkit.js';
 
-export type PointOwner = 'reconciler' | 'marker';
+export type PointOwner = 'reconciler' | 'marker' | 'compact';
 
 export interface ReconcilerPointBinding {
   readonly point: string;
@@ -39,7 +41,22 @@ export interface MarkerPointBinding {
   readonly expected: MarkerPointExpectation;
 }
 
-export type PointBinding = ReconcilerPointBinding | MarkerPointBinding;
+export interface CompactPointExpectation {
+  /** compact() over the torn image RESUMED (running baseline, same plan)? */
+  readonly resumed: boolean;
+  /** ...or replayed as a byte-true no-op (done baseline, same plan). */
+  readonly noOp: boolean;
+  /** Total exclusions the epoch must report after convergence. */
+  readonly entriesExcluded: number;
+}
+
+export interface CompactPointBinding {
+  readonly point: string;
+  readonly owner: 'compact';
+  readonly expected: CompactPointExpectation;
+}
+
+export type PointBinding = ReconcilerPointBinding | MarkerPointBinding | CompactPointBinding;
 
 /**
  * Marker-law expectations — sourced from the E2-T07 chaos suite's own
@@ -62,6 +79,21 @@ export const MARKER_POINT_EXPECTATIONS: Readonly<Record<string, MarkerPointExpec
   },
 };
 
+/**
+ * Compact-law expectations — the canonical chaos plan (driver: 2 exclusions,
+ * one per window segment, chunkSegments 1):
+ * compact.segment-rewrite.mid — chunk 0 of 2 committed: resume is a true
+ *                               continuation (carried + fresh = 2 exclusions).
+ * compact.baseline-flip.before — window exhausted, never flipped: resume flips.
+ * compact.checkpoint.mid       — flipped done, restamp killed: same-plan replay
+ *                                is a byte-true no-op that restamps.
+ */
+export const COMPACT_POINT_EXPECTATIONS: Readonly<Record<string, CompactPointExpectation>> = {
+  'compact.segment-rewrite.mid': { resumed: true, noOp: false, entriesExcluded: 2 },
+  'compact.baseline-flip.before': { resumed: true, noOp: false, entriesExcluded: 2 },
+  'compact.checkpoint.mid': { resumed: false, noOp: true, entriesExcluded: 2 },
+};
+
 export const POINT_BINDINGS: readonly PointBinding[] = [
   ...KILL_POINT_FIXTURES.map((fixture) => ({
     point: fixture.point,
@@ -76,5 +108,12 @@ export const POINT_BINDINGS: readonly PointBinding[] = [
       throw new Error(`chaos manifest: no expectation bound for marker point ${point}`);
     }
     return { point, owner: 'marker' as const, expected };
+  }),
+  ...COMPACT_KILL_POINTS.map((point) => {
+    const expected = COMPACT_POINT_EXPECTATIONS[point];
+    if (expected === undefined) {
+      throw new Error(`chaos manifest: no expectation bound for compact point ${point}`);
+    }
+    return { point, owner: 'compact' as const, expected };
   }),
 ];

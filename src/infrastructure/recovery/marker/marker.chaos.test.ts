@@ -4,12 +4,14 @@
 // assert the NEXT wake classifies lawfully, self-heals, and never fabricates a
 // crash or an update the evidence cannot prove.
 //
-// Also the flow-partition CONSTITUTION: the file is exactly the union of this
-// suite's points and the reconciler suite's points, disjoint — an orphan line
-// in points.txt, a point owned by nobody, or a point owned twice all fail CI.
+// Also the flow-partition CONSTITUTION: the file is exactly the union of the
+// reconciler suite's points, this suite's points, and (E2-T11) the compact
+// suite's points — disjoint. An orphan line in points.txt, a point owned by
+// nobody, or a point owned twice all fail CI.
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { copyKeyFor, MARKER_KEYS } from './index.js';
+import { COMPACT_KILL_POINTS } from '../../journal/compact/testkit.js';
 import { RECONCILER_KILL_POINTS } from '../reconciler/testkit.js';
 import {
   BOOT_MARKER_KILL_POINTS,
@@ -36,8 +38,8 @@ const pointsFile = (): string[] =>
     .filter((l) => l.length > 0 && !l.startsWith('#'));
 
 describe('E2-T07 chaos — kill-point constitution (flow partition is exact)', () => {
-  it('ops/chaos/points.txt == reconciler points ∪ marker points, disjoint', () => {
-    const owned = [...RECONCILER_KILL_POINTS, ...BOOT_MARKER_KILL_POINTS];
+  it('ops/chaos/points.txt == reconciler points ∪ marker points ∪ compact points, disjoint', () => {
+    const owned = [...RECONCILER_KILL_POINTS, ...BOOT_MARKER_KILL_POINTS, ...COMPACT_KILL_POINTS];
     expect(new Set(owned).size, 'a kill point is owned by two suites').toBe(owned.length);
     expect(
       [...pointsFile()].sort(),

@@ -52,6 +52,45 @@ export const META_JOURNAL_HEADS_KEY = 'journalHeads';
 export const META_IDEMPOTENCY_PREFIX = 'journal.idem.';
 
 /**
+ * meta row name for per-device compaction baselines — the EES §5 meta-row
+ * inventory names this key `purgeEpoch` (EES §4 TrashPurged: "purgeEpoch
+ * recorded in meta"). The record value (Record<deviceId, CompactionBaseline>)
+ * anchors the L5/L6 laws of E2-T11: epoch monotonicity + baseline-aware scans.
+ */
+export const META_PURGE_EPOCH_KEY = 'purgeEpoch';
+
+/**
+ * E2-T11 compaction baseline (storage shape — lives beside its meta key).
+ * running ⇒ a chunked sweep is in flight (the scanner tolerates purge gaps
+ * at/≤ throughSeq); done ⇒ closed out. planDigest binds resume to one plan.
+ *
+ * The progress cursor is SEQ-ANCHORED, never index-anchored: a window segment
+ * that loses every entry is physically DELETED mid-sweep, which shifts window
+ * positions under any index cursor — a seqStart anchor is invariant under
+ * deletion (segment seqStart is format-frozen at append), so resume simply
+ * skips segments whose seqStart lies below the cursor.
+ */
+export type CompactionBaseline = {
+  readonly schemaV: 1;
+  readonly deviceId: DeviceId;
+  readonly status: 'running' | 'done';
+  /** Monotonic per device (EES §4/§5 purgeEpoch semantics). */
+  readonly epoch: number;
+  /** Exclusion horizon: entries with seq ≤ throughSeq were purge-eligible.
+   *  Monotone non-decreasing per device across epochs — a regression would make
+   *  earlier epochs' gaps fall outside the baseline's tolerance window. */
+  readonly throughSeq: number;
+  /** fnv1a64 over the canonical plan — resume is lawful for THIS plan only. */
+  readonly planDigest: string;
+  /** Resume boundary: seqStart of the first UNPROCESSED window segment;
+   *  null ⇒ the window is exhausted (only the status flip/checkpoint remain). */
+  readonly cursorSeqStart: number | null;
+  readonly entriesExcluded: number;
+  /** XOR-fold of per-id fnv1a64 hashes (commutative ⇒ resume-safe). */
+  readonly excludedDigest: string;
+};
+
+/**
  * meta row name for checkpoint pointers, per EES §5's meta-row inventory. Value is a
  * Record<deviceId, CheckpointStamp-shaped row> (§2.8: checkpoints restorable with zero
  * replay; §2.8 versioning: baselines live in meta, never in the segments themselves).

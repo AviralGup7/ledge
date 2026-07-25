@@ -25,7 +25,22 @@ import {
   SEGMENT_ENTRY_CAP,
   type DeviceStreamHead,
 } from '@/infrastructure/journal/core/types.js';
-import { DEV_A, makeEnv, makeJournal, uniqueKey } from '@/infrastructure/journal/core/testkit.js';
+import {
+  DEV_A,
+  makeEnv,
+  makeJournal,
+  openEngine,
+  uniqueKey,
+} from '@/infrastructure/journal/core/testkit.js';
+import { createJournal } from '@/infrastructure/journal/index.js';
+import {
+  applyCompactChunks,
+  applyCompactThroughFlip,
+  chainFor,
+  missionIdForSeq,
+  seedCompactWorld,
+  snapWorld,
+} from '@/infrastructure/journal/compact/testkit.js';
 import { copyKeyFor, MARKER_KEYS } from '@/infrastructure/recovery/marker/index.js';
 import {
   makeAlive,
@@ -43,11 +58,12 @@ import {
   reconcile,
   type KillPointFixture,
 } from '@/infrastructure/recovery/reconciler/testkit.js';
-import { POINT_BINDINGS, type MarkerPointBinding } from './manifest.js';
+import { POINT_BINDINGS, type CompactPointBinding, type MarkerPointBinding } from './manifest.js';
 import { digestKillPointsFile } from './evidence.js';
 import { readKillPointsNormative } from './points-file.js';
 import type {
   ChaosEvidenceBodyV1,
+  CompactPointOutcome,
   CorruptedSeedOutcome,
   KillPointOutcome,
   MarkerPointOutcome,
@@ -69,6 +85,13 @@ const ROTTED_EVENT_ID = '0ROTTED0000000000000000000';
 const CRC_FIRST_CHAR_ALT = 'f';
 const CRC_FIRST_CHAR_BASE = '0';
 const CRC_BODY_START = 1;
+// Compact sweep canonical scenario: one exclusion per window segment so every
+// chunk boundary is a meaningful kill door (2 chunks at chunkSegments=1).
+const COMPACT_HORIZON_SEQ = 750;
+const COMPACT_CHAIN_ONE_SEQ = 7;
+const COMPACT_CHAIN_TWO_SEQ = 600;
+const COMPACT_CHUNK_SEGMENTS = 1;
+const COMPACT_CHUNK_COUNT = 2;
 
 // ---------------------------------------------------------------------------
 // 1 · Kill points.
@@ -158,6 +181,50 @@ const runStampPoint = async (point: string): Promise<MarkerPointOutcome> => {
 
 export const runMarkerPoint = async (binding: MarkerPointBinding): Promise<MarkerPointOutcome> =>
   binding.point === 'boot.marker.arm' ? runArmPoint(binding.point) : runStampPoint(binding.point);
+
+/** Drive one compact-owned point: torn sweep image ⇒ resume ⇒ twin race (E2-T11). */
+export const runCompactPoint = async (
+  binding: CompactPointBinding,
+): Promise<CompactPointOutcome> => {
+  const plan = {
+    deviceId: DEV_A,
+    throughSeq: COMPACT_HORIZON_SEQ,
+    chunkSegments: COMPACT_CHUNK_SEGMENTS,
+    purgeChains: [
+      chainFor(missionIdForSeq(COMPACT_CHAIN_ONE_SEQ)),
+      chainFor(missionIdForSeq(COMPACT_CHAIN_TWO_SEQ)),
+    ],
+  };
+  const tear =
+    binding.point === 'compact.segment-rewrite.mid'
+      ? (engine: StorageEnginePort) => applyCompactChunks(engine, plan, 1)
+      : binding.point === 'compact.baseline-flip.before'
+        ? (engine: StorageEnginePort) => applyCompactChunks(engine, plan, COMPACT_CHUNK_COUNT)
+        : (engine: StorageEnginePort) => applyCompactThroughFlip(engine, plan);
+  const engineA = await openEngine();
+  const engineB = await openEngine();
+  try {
+    await seedCompactWorld(engineA);
+    await tear(engineA);
+    const journalA = createJournal(engineA);
+    const tornScanOk = unwrap(await journalA.scanFull(), `scan@${binding.point}`).status === 'ok';
+    const report = unwrap(await journalA.compact(plan), `resume@${binding.point}`);
+    await seedCompactWorld(engineB);
+    unwrap(await createJournal(engineB).compact(plan), `twin@${binding.point}`);
+    return {
+      owner: 'compact',
+      point: binding.point,
+      tornScanOk,
+      resumed: report.resumed,
+      noOp: report.noOp,
+      entriesExcluded: report.entriesExcluded,
+      byteEqualToTwin: (await snapWorld(engineA)) === (await snapWorld(engineB)),
+    };
+  } finally {
+    await engineA.close();
+    await engineB.close();
+  }
+};
 
 // ---------------------------------------------------------------------------
 // 2 · Corrupted-journal seeds (EES §8 "seeded truncations/bit-flips").
@@ -425,7 +492,9 @@ export const runFullSweep = async (): Promise<ChaosEvidenceBodyV1> => {
     killPoints.push(
       binding.owner === 'reconciler'
         ? await runReconcilerPoint(binding.fixture)
-        : await runMarkerPoint(binding),
+        : binding.owner === 'marker'
+          ? await runMarkerPoint(binding)
+          : await runCompactPoint(binding),
     );
   }
   const corruptedSeeds: CorruptedSeedOutcome[] = [];

@@ -20,6 +20,7 @@ import type { StorageEnginePort } from '@/application/ports/storage-engine.port.
 import { openEngine } from '@/infrastructure/journal/core/testkit.js';
 import {
   CORRUPTED_SEEDS,
+  runCompactPoint,
   runCorruptedSeed,
   runFullSweep,
   runMarkerPoint,
@@ -31,8 +32,13 @@ import {
   type ChaosEvidenceReportV1,
 } from '../../chaos/evidence.js';
 import { withFaults } from '../../chaos/faults.js';
-import { MARKER_POINT_EXPECTATIONS, POINT_BINDINGS } from '../../chaos/manifest.js';
+import {
+  COMPACT_POINT_EXPECTATIONS,
+  MARKER_POINT_EXPECTATIONS,
+  POINT_BINDINGS,
+} from '../../chaos/manifest.js';
 import { readKillPoints, readKillPointsNormative } from '../../chaos/points-file.js';
+import { COMPACT_KILL_POINTS } from '@/infrastructure/journal/compact/testkit.js';
 import {
   makeWorld,
   PARK_POINT_SCOPE_REFS,
@@ -79,16 +85,21 @@ describe('E2-T09 harness — constitution (points.txt fully automated)', () => {
       (b) => b.point,
     );
     const markerPoints = POINT_BINDINGS.filter((b) => b.owner === 'marker').map((b) => b.point);
+    const compactPoints = POINT_BINDINGS.filter((b) => b.owner === 'compact').map((b) => b.point);
     expect([...markerPoints].sort()).toEqual([...BOOT_MARKER_KILL_POINTS].sort());
+    expect([...compactPoints].sort()).toEqual([...COMPACT_KILL_POINTS].sort());
     // The reconciler half derives from the owner suite's own fixture catalog;
     // cross-exactness with RECONCILER_KILL_POINTS is constitution-asserted in
     // the owner suites (both directions), and re-pinned here via the file.
     expect(reconcilerPoints.every((p) => readKillPoints().includes(p))).toBe(true);
   });
 
-  it('every marker point carries an expectation (fail-closed binding)', () => {
+  it('every marker/compact point carries an expectation (fail-closed binding)', () => {
     for (const point of BOOT_MARKER_KILL_POINTS) {
       expect(MARKER_POINT_EXPECTATIONS[point], `no expectation for ${point}`).toBeDefined();
+    }
+    for (const point of COMPACT_KILL_POINTS) {
+      expect(COMPACT_POINT_EXPECTATIONS[point], `no expectation for ${point}`).toBeDefined();
     }
   });
 
@@ -101,7 +112,9 @@ describe('E2-T09 driver — kill-point sweep (reconciler-owned)', () => {
   const reconcilerFixtures = POINT_BINDINGS.filter(
     (b): b is Extract<typeof b, { owner: 'reconciler' }> => b.owner === 'reconciler',
   );
-  expect(reconcilerFixtures).toHaveLength(readKillPoints().length - BOOT_MARKER_KILL_POINTS.length);
+  expect(reconcilerFixtures).toHaveLength(
+    readKillPoints().length - BOOT_MARKER_KILL_POINTS.length - COMPACT_KILL_POINTS.length,
+  );
 
   for (const binding of reconcilerFixtures) {
     it(`${binding.point} ⇒ ${binding.fixture.expected.disposition ?? 'clean'}`, async () => {
@@ -132,6 +145,23 @@ describe('E2-T09 driver — kill-point sweep (marker-owned)', () => {
       expect(outcome.cause).toBe(binding.expected.cause);
       expect(outcome.copyKey).toBe(binding.expected.copyKey);
       expect(outcome.followUpCause).toBe(binding.expected.followUpCause);
+    });
+  }
+});
+
+describe('E2-T09 driver — kill-point sweep (compact-owned, E2-T11)', () => {
+  const compactBindings = POINT_BINDINGS.filter(
+    (b): b is Extract<typeof b, { owner: 'compact' }> => b.owner === 'compact',
+  );
+
+  for (const binding of compactBindings) {
+    it(`${binding.point} ⇒ resume verdict ${binding.expected.resumed ? 'resumed' : 'no-op'}, twin-equal`, async () => {
+      const outcome = await runCompactPoint(binding);
+      expect(outcome.tornScanOk).toBe(true);
+      expect(outcome.resumed).toBe(binding.expected.resumed);
+      expect(outcome.noOp).toBe(binding.expected.noOp);
+      expect(outcome.entriesExcluded).toBe(binding.expected.entriesExcluded);
+      expect(outcome.byteEqualToTwin).toBe(true);
     });
   }
 });

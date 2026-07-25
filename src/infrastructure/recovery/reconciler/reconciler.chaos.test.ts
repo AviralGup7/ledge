@@ -40,7 +40,8 @@ const pointsFile = (): string[] =>
 describe('E2-T06 chaos — kill-point matrix (ops/chaos/points.txt)', () => {
   it('fixtures cover exactly this suite’s owned kill points (flow-partition law)', () => {
     // Ownership partition: the reconciler owns RECONCILER_KILL_POINTS; boot.*
-    // points belong to the marker suite (E2-T07). Cross-suite partition
+    // points belong to the marker suite (E2-T07); compact.* points to the
+    // journal compaction suite (E2-T11). Cross-suite partition
     // exactness (file == both owners, disjoint) is constitution-asserted in
     // the marker chaos suite — an orphan file line fails there; a phantom or
     // missing reconciler fixture fails HERE.
