@@ -45,6 +45,20 @@ export const recentlyClosedProjector: ProjectorDef = {
         if (str(p['kind']) !== 'tab' || id.length === 0) return [];
         return [{ kind: 'remove', key: entryIdForTab(id) }];
       }
+      case 'MissionResumed': {
+        // §6.5/§C8 fan-out: a tab that was restored OPEN is no longer recently-closed.
+        const mapping = p['restoredMapping'];
+        if (typeof mapping !== 'object' || mapping === null) return [];
+        const tabs = (mapping as Record<string, unknown>)['tabs'];
+        if (!Array.isArray(tabs)) return [];
+        const ops = [];
+        for (const t of tabs) {
+          if (typeof t !== 'object' || t === null) continue;
+          const tabId = str((t as Record<string, unknown>)['tabId']);
+          if (tabId.length > 0) ops.push({ kind: 'remove' as const, key: entryIdForTab(tabId) });
+        }
+        return ops;
+      }
       default:
         return [];
     }

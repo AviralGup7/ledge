@@ -50,6 +50,10 @@ export type TabStoreRow = {
   readonly firstSeenAt: number;
   readonly lastActiveAt: number;
   readonly browserTabId?: number | undefined;
+  /** Chrome window the live tab sits in (C5 bound-or-forms derivation at park time). */
+  readonly windowId?: number | undefined;
+  /** Chrome group the live tab sits in (C4 group-park scoping; null = ungrouped). */
+  readonly groupId?: number | null | undefined;
   readonly deletedAt?: number | undefined;
   readonly note?: string | undefined;
 };

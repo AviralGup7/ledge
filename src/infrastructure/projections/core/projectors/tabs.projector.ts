@@ -53,6 +53,8 @@ export const tabsStoreProjector: ProjectorDef = {
               lastActiveAt: numOr(p['ts'], wall),
               // Never store explicit-undefined bytes (structured-clone discipline).
               ...(typeof p['browserTabId'] === 'number' ? { browserTabId: p['browserTabId'] } : {}),
+              ...(typeof p['windowId'] === 'number' ? { windowId: p['windowId'] } : {}),
+              ...(typeof p['groupId'] === 'number' ? { groupId: p['groupId'] } : {}),
             },
           },
         ];
@@ -152,6 +154,77 @@ export const tabsStoreProjector: ProjectorDef = {
         const id = str(p['id']);
         if (id.length === 0) return [];
         return [{ kind: 'remove', key: id }];
+      }
+      case 'MissionResumed': {
+        // §6.5 fan-out: restored tab records go LIVE again, carrying their NEW browser
+        // coordinates from the mapping (identity continuity is the ledgeTabId;
+        // ingest-side correlation of the fresh chrome observation is adr-noted work).
+        const mapping = p['restoredMapping'];
+        if (typeof mapping !== 'object' || mapping === null) return [];
+        const mr = mapping as Record<string, unknown>;
+        const windowId = typeof mr['windowId'] === 'number' ? mr['windowId'] : undefined;
+        const tabs = mr['tabs'];
+        if (!Array.isArray(tabs)) return [];
+        const ops: DeltaOp[] = [];
+        for (const t of tabs) {
+          if (typeof t !== 'object' || t === null) continue;
+          const tr = t as Record<string, unknown>;
+          const tabId = str(tr['tabId']);
+          if (tabId.length === 0) continue;
+          ops.push({
+            kind: 'patch',
+            key: tabId,
+            fields: {
+              state: 'live',
+              lastActiveAt: wall,
+              ...(typeof tr['browserTabId'] === 'number'
+                ? { browserTabId: tr['browserTabId'] }
+                : {}),
+              ...(windowId !== undefined ? { windowId } : {}),
+            },
+          });
+        }
+        return ops;
+      }
+      case 'ImportCommitted': {
+        // §4 consumers='*(all views)': manifest materializes imported tabs as KEPT
+        // rows bound to their import mission (Spec W15 exile = kept-not-open).
+        const manifest = p['batchManifestRef'];
+        if (typeof manifest !== 'object' || manifest === null) return [];
+        const list = (manifest as Record<string, unknown>)['missions'];
+        if (!Array.isArray(list)) return [];
+        const ops: DeltaOp[] = [];
+        for (const item of list) {
+          if (typeof item !== 'object' || item === null) continue;
+          const rec = item as Record<string, unknown>;
+          const missionId = str(rec['missionId']);
+          const tabs = rec['tabs'];
+          if (!Array.isArray(tabs)) continue;
+          for (const t of tabs) {
+            if (typeof t !== 'object' || t === null) continue;
+            const tr = t as Record<string, unknown>;
+            const ledgeTabId = str(tr['ledgeTabId']);
+            if (ledgeTabId.length === 0) continue;
+            ops.push({
+              kind: 'upsert',
+              key: ledgeTabId,
+              record: {
+                ledgeTabId,
+                missionId,
+                url: str(tr['url']),
+                title: str(tr['title']),
+                domain: str(tr['domain']),
+                state: 'kept',
+                firstSeenAt: wall,
+                lastActiveAt: wall,
+                ...(typeof tr['urlCanonHash'] === 'string'
+                  ? { urlCanonHash: tr['urlCanonHash'] }
+                  : {}),
+              },
+            });
+          }
+        }
+        return ops;
       }
       default:
         return [];

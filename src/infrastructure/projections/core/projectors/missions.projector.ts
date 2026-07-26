@@ -206,6 +206,39 @@ export const missionsProjector: ProjectorDef = {
           { kind: 'patch', key: missionId, fields: { windowBinding: null, lastActiveAt: wall } },
         ];
       }
+      case 'ImportCommitted': {
+        // §4 consumers='*(all views)': the batch manifest materializes imported
+        // missions as PARKED library entries (exile is kept-not-open; Spec W15).
+        // Manifest shape is the app-owned record contract (importers plan, services
+        // truth-write): {missions: [{missionId, name, tabIds[]}]} — idempotentBy
+        // batchId means replays upsert-identical rows.
+        const manifest = p['batchManifestRef'];
+        if (typeof manifest !== 'object' || manifest === null) return [];
+        const list = (manifest as Record<string, unknown>)['missions'];
+        if (!Array.isArray(list)) return [];
+        const ops: DeltaOp[] = [];
+        for (const item of list) {
+          if (typeof item !== 'object' || item === null) continue;
+          const rec = item as Record<string, unknown>;
+          const missionId = str(rec['missionId']);
+          if (missionId.length === 0) continue;
+          ops.push({
+            kind: 'upsert',
+            key: missionId,
+            record: {
+              missionId,
+              name: str(rec['name']),
+              namedBy: 'import',
+              state: 'parked',
+              concluded: false,
+              tabIds: asIds(rec['tabIds']),
+              createdAt: wall,
+              lastActiveAt: wall,
+            } satisfies MissionViewRow,
+          });
+        }
+        return ops;
+      }
       default:
         return [];
     }
