@@ -32,7 +32,11 @@
       "trash": "Trash",
       "live": "Open",
       "concluded": "Concluded",
-      "fallback": "Keyword results"
+      "fallback": "Keyword results",
+      "probe-ok": "OK",
+      "probe-warn": "Check",
+      "probe-fail": "Attention",
+      "probe-unwired": "Not wired"
     },
     "count": {
       "tabs": "{count} tabs",
@@ -76,7 +80,10 @@
       "details": "Details",
       "review-first": "Review first",
       "include-candidate": "Add to put-back",
-      "exclude-candidate": "Leave out"
+      "exclude-candidate": "Leave out",
+      "scan-full": "Run a full scan",
+      "scan-full-confirm": "Run it anyway",
+      "download-bundle": "Download diagnostics bundle"
     },
     "undo": {
       "archived": "Back from the Archive.",
@@ -182,7 +189,8 @@
       "diagnostics-done": "Diagnostics are ready.",
       "settings-saved": "Saved.",
       "topic-saved": "Topic corrected.",
-      "first-run-done": "{missions} missions around {tabs} tabs."
+      "first-run-done": "{missions} missions around {tabs} tabs.",
+      "download-done": "Saved to your downloads."
     },
     "error": {
       "capability": "Ledge needs a browser capability that isn't available here.",
@@ -227,6 +235,18 @@
       "just-now": "just now",
       "minutes": "{count} min before",
       "hours": "{count} hr before"
+    },
+    "rescue": {
+      "probes-head": "Health checks · {count}",
+      "timeline-head": "Recent diagnostics · {count}",
+      "timeline-empty": "Nothing recorded yet.",
+      "force-confirm": "A full scan already ran recently. Run one anyway?",
+      "filter-all": "All",
+      "filter-commands": "Commands",
+      "filter-scans": "Scans",
+      "filter-bundles": "Bundles",
+      "filter-probes": "Probes",
+      "filter-diagnostics": "System"
     }
   }
 }

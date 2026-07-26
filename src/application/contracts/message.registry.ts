@@ -217,7 +217,13 @@ export const MESSAGE_REGISTRY: Readonly<Record<string, MessageSpec>> = {
     kind: 'command',
     family: 'command',
     availability: 'v1',
-    payload: { mode: { enum: ['tail', 'full'] } },
+    // E6-T06 (user-ruled amendment, docs/adr-notes/e6-diagnostics.md): C24's
+    // "full scan ≥7d apart unless rescue console" = capability-authorized force.
+    // `force?: true` is additive-optional; the server paces WITHOUT it
+    // (E_DOMAIN_LEGALITY 'full-scan-cadence') and honors it ONLY for the
+    // envelope-derived rescue-console capability ('force-unauthorized' else) —
+    // a client can never self-declare the exemption.
+    payload: { mode: { enum: ['tail', 'full'] }, 'force?': { literal: true } },
     response: { reportId: 'id' },
   },
   ForgetEverything: {
@@ -341,6 +347,11 @@ export const MESSAGE_REGISTRY: Readonly<Record<string, MessageSpec>> = {
     availability: 'v1',
     payload: {},
     // Probe-registry dump: shape belongs to the diagnostics tier (EES §2.15).
+    // E6-T03..T05 (user-ruled narrowings, docs/adr-notes/e6-diagnostics.md): the
+    // diagnostics dump carries the §12 probe rows (registry-complete, unwired
+    // rides honest), lastBundle{bundleId,createdAt,available≡json,size} for the
+    // console's download gesture, and the recentRing timeline slice — additive;
+    // the legacy ad-hoc map answers only when the seam is unwired.
   },
   PeekOpenTabs: {
     kind: 'query',

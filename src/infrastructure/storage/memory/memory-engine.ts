@@ -5,7 +5,13 @@
 //
 // Semantics mirrored from the Dexie adapter, faithfully enough for contract law:
 //  * schema v1 store set + schemaV stamp/assert on open (EES §2.9)
-//  * single-txn atomicity: mutations apply to a working copy, aborted work discards it
+//  * single-txn atomicity: mutations apply to a working copy, aborted work discards it.
+//    IDB write-isolation parity (E6-T03 exposure): the working copy covers the DECLARED
+//    SCOPE, and commit applies the txn's WRITE SET (put/delete deltas) to the live
+//    tables — never a whole-table copyback. A copyback commit let an overlapping txn
+//    (diagnostics selfTest meta write vs a journal watermark/commit) wipe rows it
+//    never touched in roots tests; real IDB isolates writers by row, so this matches
+//    Dexie. Same-KEY overlap stays last-committer-wins (no test relies on it).
 //  * byIndex honors the declared index names from SCHEMA_V1 (compound [a+b], dotted a.b)
 //  * records pass through verbatim — unknown-field law holds by the same construction
 import type {
@@ -81,12 +87,10 @@ export function createMemoryStorageEngine(): StorageEnginePort {
   // The durable world: committed tables. txn work mutates a copy (atomic abort).
   const tables = new Map<StoreName, TableData>(STORE_NAMES.map((n) => [n, new Map()]));
 
-  const cloneTables = (src: Map<StoreName, TableData>): Map<StoreName, TableData> =>
-    new Map([...src].map(([n, t]) => [n, new Map(t)]));
-
   const makeHandle = <R extends StoredRecord>(
     storeName: StoreName,
     table: TableData,
+    delta?: Map<string, StoredRecord | null>,
   ): StoreHandle<R> => {
     const specTokens = (SCHEMA_V1[storeName] ?? '')
       .split(',')
@@ -112,7 +116,9 @@ export function createMemoryStorageEngine(): StorageEnginePort {
         if (pkValue === undefined) {
           throw new Error(`record missing primary key ${pkToken} on ${storeName}`);
         }
-        table.set(keyString(pkValue as StorageKey), cloneRecord(record) as StoredRecord);
+        const stored = cloneRecord(record) as StoredRecord;
+        table.set(keyString(pkValue as StorageKey), stored);
+        delta?.set(keyString(pkValue as StorageKey), stored);
         return Promise.resolve();
       },
       putMany: async (records: readonly R[]) => {
@@ -120,10 +126,14 @@ export function createMemoryStorageEngine(): StorageEnginePort {
       },
       delete: (key: StorageKey) => {
         table.delete(keyString(key));
+        delta?.set(keyString(key), null);
         return Promise.resolve();
       },
       deleteMany: (keys: readonly StorageKey[]) => {
-        for (const k of keys) table.delete(keyString(k));
+        for (const k of keys) {
+          table.delete(keyString(k));
+          delta?.set(keyString(k), null);
+        }
         return Promise.resolve();
       },
       toArray: () =>
@@ -202,7 +212,19 @@ export function createMemoryStorageEngine(): StorageEnginePort {
       work: (tx: TxScope) => Promise<T>,
     ): Promise<Result<T, LedgeError>> {
       if (!opened) return noOpenError();
-      const working = mode === 'readwrite' ? cloneTables(tables) : tables;
+      // IDB write-isolation parity: the working copy covers only the declared
+      // scope; commit applies the txn's write set (deltas) onto the LIVE tables so
+      // overlapping txns with disjoint keys never clobber one another.
+      const deltas = new Map<StoreName, Map<string, StoredRecord | null>>();
+      const working =
+        mode === 'readwrite'
+          ? new Map(
+              scope.map((n) => {
+                deltas.set(n, new Map());
+                return [n, new Map(tables.get(n) ?? new Map())];
+              }),
+            )
+          : tables;
       const scopeObj: TxScope = {
         table: <R extends StoredRecord>(name: StoreName) => {
           const t = working.get(name);
@@ -211,13 +233,20 @@ export function createMemoryStorageEngine(): StorageEnginePort {
               Object.assign(new Error(`unknown store ${name}`), { name: 'SchemaError' }),
               'txn',
             );
-          return makeHandle<R>(name, t);
+          return makeHandle<R>(name, t, deltas.get(name));
         },
       };
       try {
         const value = await work(scopeObj);
         if (mode === 'readwrite') {
-          for (const [name, data] of working) tables.set(name, data);
+          for (const [name, delta] of deltas) {
+            const live = tables.get(name);
+            if (live === undefined) continue;
+            for (const [k, v] of delta) {
+              if (v === null) live.delete(k);
+              else live.set(k, v);
+            }
+          }
         }
         return ok(value);
       } catch (e) {

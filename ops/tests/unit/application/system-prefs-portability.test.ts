@@ -148,11 +148,83 @@ describe('E3-APP system — W1 first-run + ADR-035 settings law', () => {
 
   it('rescueScanNow writes the diagnostics ring row and returns its reportId', async () => {
     const h = await makeServices();
-    const out = await mustOk(h.services.system.rescueScanNow({ mode: 'tail' }, h.ctxOf(10).ctx));
+    const out = await mustOk(
+      h.services.system.rescueScanNow({ mode: 'tail', consoleAuthorized: false }, h.ctxOf(10).ctx),
+    );
     expect(out.reportId.startsWith('diag.')).toBe(true);
     const logs = await h.rows('logs');
     expect(logs.length).toBe(1);
     expect(logs[0]?.['kind']).toBe('scan');
+    expect(logs[0]?.['msg']).toBe('scan-tail');
+  });
+});
+
+describe('E6-T06 · C24 cadence law — full-scan pacing + capability-authorized force', () => {
+  const FULL = 'full' as const;
+  const TAIL = 'tail' as const;
+
+  it('first full scan stamps the clock; an immediate second refuses with cadence + nextEligibleAt', async () => {
+    const h = await makeServices();
+    const first = await mustOk(
+      h.services.system.rescueScanNow({ mode: FULL, consoleAuthorized: false }, h.ctxOf(30).ctx),
+    );
+    expect(first.reportId.startsWith('diag.scan:')).toBe(true);
+    expect((await h.row('meta', 'diag.lastFullScanAt'))?.['value']).not.toBeUndefined();
+    // Tail rides free — no cadence on the ≤50ms-law scan.
+    await mustOk(
+      h.services.system.rescueScanNow({ mode: TAIL, consoleAuthorized: false }, h.ctxOf(31).ctx),
+    );
+    const second = await h.services.system.rescueScanNow(
+      { mode: FULL, consoleAuthorized: false },
+      h.ctxOf(32).ctx,
+    );
+    expect(second.ok).toBe(false);
+    if (!second.ok) {
+      expect(second.error.code).toBe('E_DOMAIN_LEGALITY');
+      expect(second.error.details?.['reason']).toBe('full-scan-cadence');
+      expect(typeof second.error.details?.['nextEligibleAt']).toBe('number');
+    }
+  });
+
+  it('force honors ONLY the console capability: stranger ⇒ force-unauthorized; console ⇒ runs + audit row', async () => {
+    const h = await makeServices();
+    await mustOk(
+      h.services.system.rescueScanNow({ mode: FULL, consoleAuthorized: false }, h.ctxOf(33).ctx),
+    );
+    const stranger = await h.services.system.rescueScanNow(
+      { mode: FULL, force: true, consoleAuthorized: false },
+      h.ctxOf(34).ctx,
+    );
+    expect(stranger.ok).toBe(false);
+    if (!stranger.ok) expect(stranger.error.details?.['reason']).toBe('force-unauthorized');
+    const forced = await mustOk(
+      h.services.system.rescueScanNow(
+        { mode: FULL, force: true, consoleAuthorized: true },
+        h.ctxOf(35).ctx,
+      ),
+    );
+    expect(forced.reportId.startsWith('diag.scan:')).toBe(true);
+    // The audit row finds the override (user-ruled F1 "makes overrides auditable").
+    const audit = (await h.rows('logs')).filter((r) => r['kind'] === 'scan');
+    expect(audit.length).toBe(2);
+    expect(audit[1]?.['fields']).toMatchObject({ mode: 'full', forced: true });
+  });
+
+  it('the clock re-opens after the 7d grain', async () => {
+    const h = await makeServices();
+    await mustOk(
+      h.services.system.rescueScanNow({ mode: FULL, consoleAuthorized: false }, h.ctxOf(36).ctx),
+    );
+    const stamped = (await h.row('meta', 'diag.lastFullScanAt'))?.['value'];
+    if (typeof stamped !== 'number') throw new Error('stamp missing');
+    const pastGrain = 8 * 24 * 60 * 60 * 1000;
+    const r = await h.engine.txn(['meta'], 'readwrite', async (tx) => {
+      await tx.table('meta').put({ key: 'diag.lastFullScanAt', value: stamped - pastGrain });
+    });
+    if (!r.ok) throw new Error('restamp failed');
+    await mustOk(
+      h.services.system.rescueScanNow({ mode: FULL, consoleAuthorized: false }, h.ctxOf(37).ctx),
+    );
   });
 });
 

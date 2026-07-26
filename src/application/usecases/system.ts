@@ -8,6 +8,7 @@
 import { ledgeError, err, ok, type LedgeError, type Result } from '@/shared-kernel/result/index.js';
 import type { ServiceEdge, UseCtx } from './shared/app-ctx.js';
 import { opKey } from './shared/app-ctx.js';
+import { readMeta } from './shared/rows.js';
 import type { PlannedPlan } from './shared/stream-appender.js';
 
 const SYS_OP = 'command:system';
@@ -28,6 +29,16 @@ const SETTINGS_PREFIX_WHITELIST: readonly string[] = ['favorite.', 'pinnedMissio
 /** logs ring row (§5 logs ring 500; diagnostics/dossiers land here). */
 const LOGS_PREFIX = 'diag';
 const LOG_RING_SLOTS = 500;
+/** C24 rate law: full journal scans pace ≥7d apart (tail scans are unthrottled —
+ *  their ≤50ms law makes them polite by construction). */
+const DAYS_PER_WEEK = 7;
+const HOURS_PER_DAY = 24;
+const MINUTES_PER_HOUR = 60;
+const SECONDS_PER_MINUTE = 60;
+const MS_PER_SECOND = 1_000;
+export const FULL_SCAN_MIN_GAP_MS =
+  DAYS_PER_WEEK * HOURS_PER_DAY * MINUTES_PER_HOUR * SECONDS_PER_MINUTE * MS_PER_SECOND;
+export const META_LAST_FULL_SCAN = 'diag.lastFullScanAt';
 
 const isPrimitive = (v: unknown): v is string | number | boolean | null =>
   v === null || typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean';
@@ -47,7 +58,15 @@ export interface SystemService {
     ctx: UseCtx,
   ): Promise<Result<{ readonly rebuilt: readonly string[] }, LedgeError>>;
   rescueScanNow(
-    input: { readonly mode: 'tail' | 'full' },
+    input: {
+      readonly mode: 'tail' | 'full';
+      /** E6-T06 F1: cadence override flag (payload-verbatim; honored ONLY with
+       *  consoleAuthorized — the capability itself derives from the validated
+       *  envelope, never from a flag a client can claim). */
+      readonly force?: true | undefined;
+      /** Rescue-console capability as decided by the handler from the envelope. */
+      readonly consoleAuthorized: boolean;
+    },
     ctx: UseCtx,
   ): Promise<Result<{ readonly reportId: string }, LedgeError>>;
   forgetEverything(
@@ -63,7 +82,17 @@ export interface SystemService {
 export const createSystemService = (edge: ServiceEdge): SystemService => {
   const { deps, appender } = edge;
 
-  const writeRing = async (kind: string, body: Readonly<Record<string, unknown>>) => {
+  // E6-T03: the reports path prefers the unified diagnostics ring (typed rows,
+  // redacted fields, fail-drop law). The legacy inline ring write survives as the
+  // degrade path when the seam is unwired (never a fault, by diagnostics law).
+  const reportDiag = async (
+    kind: 'scan' | 'bundle',
+    msg: string,
+    fields: Readonly<Record<string, string | number | boolean | null>>,
+  ): Promise<Result<string, LedgeError>> => {
+    if (deps.diagnostics !== undefined) {
+      return deps.diagnostics.report(kind, { level: 'info', msg, fields });
+    }
     const reportId = `${LOGS_PREFIX}.${kind}:${String(deps.now())}:${deps.ids.nextId()}`;
     const written = await deps.engine.txn(['meta'], 'readwrite', async (tx) => {
       const row = await tx.table('meta').get('logs.slot');
@@ -74,7 +103,7 @@ export const createSystemService = (edge: ServiceEdge): SystemService => {
     });
     if (!written.ok) return err(written.error);
     const put = await deps.engine.txn(['logs'], 'readwrite', async (tx) => {
-      await tx.table('logs').put({ slot: written.value, kind, ...body });
+      await tx.table('logs').put({ slot: written.value, kind, msg, ...fields });
     });
     if (!put.ok) return err(put.error);
     return ok(reportId);
@@ -208,14 +237,50 @@ export const createSystemService = (edge: ServiceEdge): SystemService => {
 
     rescueScanNow: async (input, ctx) => {
       ctx.token.throwIfCancelled();
+      // C24 cadence law (user-ruled F1, capability-authorized force): a full scan
+      // <7d after the last refuses E_DOMAIN_LEGALITY 'full-scan-cadence'; force
+      // overrides ONLY for the rescue-console capability (envelope-derived — a
+      // client cannot self-declare), else 'force-unauthorized'. Both refusals
+      // land before any journal work; the stamp rides only a SUCCESSFUL scan.
+      if (input.mode === 'full') {
+        const last = await readMeta(deps.engine, META_LAST_FULL_SCAN);
+        if (!last.ok) return err(last.error);
+        const lastAt = typeof last.value === 'number' ? last.value : null;
+        if (lastAt !== null && deps.now() - lastAt < FULL_SCAN_MIN_GAP_MS) {
+          if (input.force !== true)
+            return err(
+              ledgeError('E_DOMAIN_LEGALITY', {
+                operation: 'command:RescueScanNow',
+                reason: 'full-scan-cadence',
+                nextEligibleAt: lastAt + FULL_SCAN_MIN_GAP_MS,
+              }),
+            );
+          if (!input.consoleAuthorized)
+            return err(
+              ledgeError('E_DOMAIN_LEGALITY', {
+                operation: 'command:RescueScanNow',
+                reason: 'force-unauthorized',
+              }),
+            );
+        }
+      }
       const scan =
         input.mode === 'tail' ? await deps.journal.scanTail() : await deps.journal.scanFull();
       if (!scan.ok) return err(scan.error);
-      const rid = await writeRing('scan', {
+      if (input.mode === 'full') {
+        const stamped = await deps.engine.txn(['meta'], 'readwrite', async (tx) => {
+          await tx.table('meta').put({ key: META_LAST_FULL_SCAN, value: deps.now() });
+        });
+        if (!stamped.ok) return err(stamped.error);
+      }
+      // The unified ring carries the scan receipt (audit trail — a FORCED scan
+      // is exactly the row an operator wants findable, user-ruled F1/F4).
+      const rid = await reportDiag('scan', `scan-${input.mode}`, {
         mode: input.mode,
         status: scan.value.status,
         coverage: scan.value.coverage,
         suspects: scan.value.suspects.length,
+        forced: input.force === true,
         at: deps.now(),
       });
       if (!rid.ok) return err(rid.error);
@@ -273,6 +338,19 @@ export const createSystemService = (edge: ServiceEdge): SystemService => {
 
     exportDiagnostics: async (input, ctx) => {
       ctx.token.throwIfCancelled();
+      // E6-T05: with the diagnostics seam wired, the adapter assembles the bundle
+      // (probe-registry dump, projections status, tail scan, quota, ring tail —
+      // redaction posture = current flip). includeAddresses:true GRANTS the 24h
+      // flip (ADR-027); without the seam the legacy ad-hoc dossier stands.
+      if (deps.diagnostics !== undefined) {
+        if (input.includeAddresses === true) {
+          const granted = await deps.diagnostics.grantIncludeAddresses(true);
+          if (!granted.ok) return err(granted.error);
+        }
+        const bundle = await deps.diagnostics.exportBundle();
+        if (!bundle.ok) return err(bundle.error);
+        return ok({ bundleId: bundle.value.bundleId });
+      }
       const status = await deps.projections.status();
       if (!status.ok) return err(status.error);
       const scan = await deps.journal.scanTail();
@@ -288,7 +366,12 @@ export const createSystemService = (edge: ServiceEdge): SystemService => {
         journalTailScan: scan.ok ? { status: scan.value.status } : { status: 'error' },
         storage: quota.ok ? { persisted: quota.value.persisted } : { persisted: false },
       };
-      const rid = await writeRing('bundle', body);
+      // Legacy degrade path (diagnostics seam unwired): the pre-T03 dossier row.
+      const rid = await reportDiag('bundle', 'bundle-legacy', {
+        at: typeof body['at'] === 'number' ? body['at'] : deps.now(),
+        includeAddresses: input.includeAddresses === true,
+        projections: Array.isArray(body['projections']) ? body['projections'].length : 0,
+      });
       if (!rid.ok) return err(rid.error);
       return ok({ bundleId: rid.value });
     },

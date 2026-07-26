@@ -173,3 +173,53 @@ describe('E3-APP queries — search fallback law + detail/trash sweeps', () => {
     expect(activity.length).toBeLessThanOrEqual(5);
   });
 });
+
+describe('E6 · getHealth — diagnostics registry dump (seam wired by default in the harness)', () => {
+  it('answers the §12 probe rows, the ring timeline, and a null lastBundle pre-export', async () => {
+    const h = await makeServices();
+    await mustOk(
+      h.services.system.rescueScanNow({ mode: 'tail', consoleAuthorized: false }, h.ctxOf(60).ctx),
+    );
+    const dump = (await mustOk(h.services.queries.getHealth())) as {
+      registryV: number;
+      probes: { name: string; wired: boolean; status: string }[];
+      lastBundle: unknown;
+      recentRing: { kind: string; msg: string }[];
+      asOf: number;
+    };
+    expect(dump.registryV).toBe(1);
+    // Catalog-complete: the ten §12 probes + the lifecycle probe.
+    expect(dump.probes.length).toBe(11);
+    expect(dump.probes[10]?.name).toBe('diag-selftest');
+    // The scan row the service wrote rides the unified-ring timeline.
+    const scanRows = dump.recentRing.filter((r) => r.kind === 'scan');
+    expect(scanRows.length).toBe(1);
+    expect(scanRows[0]?.msg).toBe('scan-tail');
+    expect(dump.lastBundle).toBeNull();
+    expect(typeof dump.asOf).toBe('number');
+  });
+
+  it('after ExportDiagnostics the dump carries lastBundle metadata + json (download gesture lane)', async () => {
+    const h = await makeServices();
+    const out = await mustOk(
+      h.services.system.exportDiagnostics({ includeAddresses: true }, h.ctxOf(61).ctx),
+    );
+    const dump = (await mustOk(h.services.queries.getHealth())) as {
+      lastBundle: {
+        bundleId: string;
+        size: number;
+        includeAddresses: boolean;
+        json: string;
+      } | null;
+    };
+    expect(dump.lastBundle?.bundleId).toBe(out.bundleId);
+    expect(dump.lastBundle?.includeAddresses).toBe(true);
+    expect(dump.lastBundle?.size).toBe(dump.lastBundle?.json.length);
+    const doc = JSON.parse(dump.lastBundle?.json ?? '{}') as {
+      bundleId?: string;
+      schemaV?: number;
+    };
+    expect(doc.bundleId).toBe(out.bundleId);
+    expect(doc.schemaV).toBe(1);
+  });
+});

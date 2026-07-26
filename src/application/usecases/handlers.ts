@@ -227,7 +227,18 @@ export const WIRE_COMMANDS: readonly CommandRegistration<S>[] = [
     (ctx) => {
       const mode = str(ctx.message.payload['mode']);
       if (mode !== 'tail' && mode !== 'full') return missing('RescueScanNow', 'mode');
-      return ctx.services.system.rescueScanNow({ mode }, useCtx(ctx));
+      // E6-T06 F1 (capability-authorized force): the flag rides the payload, but
+      // the CAPABILITY is derived from the validated envelope's senderContext —
+      // the rescue console is the quiet page, and a client cannot self-declare.
+      const force = ctx.message.payload['force'] === true;
+      return ctx.services.system.rescueScanNow(
+        {
+          mode,
+          ...(force ? { force: true as const } : {}),
+          consoleAuthorized: ctx.message.senderContext === 'quiet',
+        },
+        useCtx(ctx),
+      );
     },
     { lane: 'maintenance' },
   ),

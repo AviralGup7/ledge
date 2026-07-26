@@ -10,6 +10,7 @@ import type {
 import type { IntentLedgerPort } from '@/application/ports/intent-ledger.port.js';
 import type { JournalPort } from '@/application/ports/journal.port.js';
 import type { ProjectionEnginePort } from '@/application/ports/projection-engine.port.js';
+import type { DiagnosticsPort } from '@/application/ports/diagnostics.port.js';
 import type { NativeSessionsPort } from '@/application/ports/sessions.port.js';
 import type { SnapshotsPort } from '@/application/ports/snapshots.port.js';
 import type { StorageEnginePort } from '@/application/ports/storage-engine.port.js';
@@ -49,6 +50,10 @@ export interface ServiceDeps {
    *  the snapshot is skipped and the card carries no candidates row — degrade, never
    *  fault the boot act). Read-only by port law (E3-T03). */
   readonly sessions?: NativeSessionsPort | undefined;
+  /** E6-T03 diagnostics seam (EES §2.15: unified typed ring, redactor, probes,
+   *  bundle). undefined ⇒ services fall back to their pre-T03 inline ring writes
+   *  and getHealth answers the legacy ad-hoc dump (degrade, never fault). */
+  readonly diagnostics?: DiagnosticsPort | undefined;
 }
 
 /** Per-invocation dispatch facts a service may need (never the raw wire message). */

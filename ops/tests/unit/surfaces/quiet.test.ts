@@ -1081,3 +1081,151 @@ describe('E6-T02 quiet · recovery candidates panel (confirm-before-restore)', (
     h.unmount();
   });
 });
+
+// E6-T04/T05/T06 · rescue console v2 — §12 probe rows, unified ring timeline,
+// cadence confirm flow, armed download gesture.
+describe('E6 quiet · rescue console (probes + timeline + cadence + bundle)', () => {
+  const HEALTH_DUMP = {
+    registryV: 1,
+    probes: [
+      {
+        name: 'journal-tail-freshness',
+        wired: true,
+        status: 'ok',
+        fields: { scan: 'ok', suspects: 0 },
+      },
+      { name: 'dangling-intents', wired: true, status: 'warn', fields: { pending: 2 } },
+      { name: 'ai-lanes', wired: false, status: 'unwired', fields: { tier: 'v1.1' } },
+    ],
+    lastBundle: null,
+    recentRing: [
+      {
+        slot: 3,
+        at: Date.now() - 61_000,
+        level: 'info',
+        kind: 'command',
+        msg: 'command:ParkTab:applied',
+        ctxHash: 'x',
+      },
+      {
+        slot: 4,
+        at: Date.now() - 31_000,
+        level: 'warn',
+        kind: 'scan',
+        msg: 'scan-tail',
+        ctxHash: 'y',
+      },
+      {
+        slot: 5,
+        at: Date.now() - 11_000,
+        level: 'warn',
+        kind: 'probe',
+        msg: 'probe-run-issues',
+        ctxHash: 'z',
+      },
+    ],
+    asOf: Date.now(),
+  };
+
+  it('renders §12 probe rows with lifecycle chips; the raw dump folds away intact', async () => {
+    const h = mount();
+    h.answers.set('GetHealth', HEALTH_DUMP);
+    await navTo(h, 'rescue');
+    expect(mustQuery(content(h.doc), '[data-line="probes-head"]').textContent).toBe(
+      copyOf('msg.rescue.probes-head', { count: 3 }),
+    );
+    const rows = content(h.doc).querySelectorAll('[data-line="probe-row"]');
+    expect(rows.length).toBe(3);
+    // Lifecycle honesty: unwired rides its own neutral chip, never green.
+    expect(mustQuery(content(h.doc), '[data-chip="probe-unwired"]').textContent).toBe(
+      copyOf('msg.state.probe-unwired'),
+    );
+    expect(mustQuery(content(h.doc), '[data-chip="probe-warn"]').textContent).toBe(
+      copyOf('msg.state.probe-warn'),
+    );
+    // The raw dump survives inside the fold (tell-me-more lane).
+    const fold = mustQuery(content(h.doc), '[data-panel="probe-fold"]');
+    expect(mustQuery(fold, '[data-probe-dump]').textContent).toContain('dangling-intents');
+    h.unmount();
+  });
+
+  it('unified timeline renders rows; kind filters narrow with aria-pressed honesty', async () => {
+    const h = mount();
+    h.answers.set('GetHealth', HEALTH_DUMP);
+    await navTo(h, 'rescue');
+    expect(mustQuery(content(h.doc), '[data-line="ring-head"]').textContent).toBe(
+      copyOf('msg.rescue.timeline-head', { count: 3 }),
+    );
+    const all = content(h.doc).querySelectorAll('[data-line="ring-row"]');
+    expect(all.length).toBe(3);
+    const filterBtn = mustQuery(content(h.doc), '[data-action="ring-filter-command"]');
+    expect(filterBtn.textContent).toBe(copyOf('msg.rescue.filter-commands'));
+    filterBtn.click();
+    await flush();
+    const narrowed = content(h.doc).querySelectorAll('[data-line="ring-row"]');
+    expect(narrowed.length).toBe(1);
+    const surviving = narrowed[0];
+    if (surviving === undefined) throw new Error('ring row vanished');
+    expect(surviving.getAttribute('data-kind')).toBe('command');
+    expect(
+      mustQuery(content(h.doc), '[data-action="ring-filter-command"]').getAttribute('aria-pressed'),
+    ).toBe('true');
+    h.unmount();
+  });
+
+  it('bundle presence in the dump arms the download gesture (and only then)', async () => {
+    const h = mount();
+    h.answers.set('GetHealth', {
+      ...HEALTH_DUMP,
+      lastBundle: {
+        bundleId: 'diag.bundle:9:abc',
+        includeAddresses: false,
+        size: 8,
+        json: '{"a":1}',
+      },
+    });
+    await navTo(h, 'rescue');
+    expect(
+      mustQuery(content(h.doc), '[data-action="download-bundle"]').getAttribute('data-armed'),
+    ).toBe('true');
+    h.unmount();
+    // No bundle in the dump ⇒ the gesture stays disarmed.
+    const h2 = mount();
+    h2.answers.set('GetHealth', HEALTH_DUMP);
+    await navTo(h2, 'rescue');
+    expect(
+      mustQuery(content(h2.doc), '[data-action="download-bundle"]').getAttribute('data-armed'),
+    ).toBe('false');
+    h2.unmount();
+  });
+
+  it('full scan cadence refusal ⇒ calm confirm ⇒ forced resend with the capability flag', async () => {
+    const h = mount();
+    await navTo(h, 'rescue');
+    mustQuery(content(h.doc), '[data-action="rescue-scan-full"]').click();
+    await flush();
+    const first = h.fake.lastOf('RescueScanNow');
+    expect(first.payload).toEqual({ mode: 'full' });
+    h.fake.fail(first.cid, {
+      code: 'E_DOMAIN_LEGALITY',
+      retryable: false,
+      messageKey: 'msg.error.domain',
+      recoveryKey: 'msg.recover.retry',
+      details: { reason: 'full-scan-cadence', nextEligibleAt: 1_900_000_000_000 },
+    });
+    await flush();
+    expect(mustQuery(h.doc.body, '[data-line="force-confirm-copy"]').textContent).toBe(
+      copyOf('msg.rescue.force-confirm'),
+    );
+    mustQuery(h.doc.body, '[data-action="scan-full-force"]').click();
+    await flush();
+    const forced = h.fake.lastOf('RescueScanNow');
+    expect(forced.payload).toEqual({ mode: 'full', force: true });
+    h.fake.apply(forced.cid, { reportId: '01HF8SCANFORCED0000000000' });
+    await flush();
+    expect(mustQuery(h.doc.body, '[data-report="scan-full"]').textContent).toContain(
+      '01HF8SCANFORCED0000000000',
+    );
+    h.unmount();
+  });
+});

@@ -36,6 +36,9 @@ const num = (v: unknown, fallback = 0): number => (typeof v === 'number' ? v : f
 /** §3 SearchQuery limit clamp (hub-side, contract note: bound ≤50). */
 const SEARCH_LIMIT_CAP = 50;
 const PAGE_SIZE_DEFAULT = 50;
+/** E6-T04: timeline slice riding GetHealth (the console shows the freshest
+ *  rows; the full ring dump rides the diagnostics bundle). */
+const HEALTH_TIMELINE_ROWS = 25;
 
 export interface QueryService {
   heartbeat(): Promise<Result<HeartbeatView, LedgeError>>;
@@ -395,6 +398,33 @@ export const createQueryService = (edge: ServiceEdge): QueryService => {
     },
 
     getHealth: async () => {
+      // E6-T03..T05: with the diagnostics seam wired the dump IS the registry
+      // (user-ruled shapes: probes catalog-complete, lastBundle for the console
+      // download gesture, recentRing timeline). Legacy map stands when unwired.
+      if (deps.diagnostics !== undefined) {
+        const probes = await deps.diagnostics.runProbes();
+        if (!probes.ok) return err(probes.error);
+        const bundle = await deps.diagnostics.lastBundle();
+        if (!bundle.ok) return err(bundle.error);
+        const ring = await deps.diagnostics.ringDump(HEALTH_TIMELINE_ROWS);
+        if (!ring.ok) return err(ring.error);
+        return ok({
+          registryV: 1,
+          probes: probes.value,
+          lastBundle:
+            bundle.value === null
+              ? null
+              : {
+                  bundleId: bundle.value.bundleId,
+                  createdAt: bundle.value.createdAt,
+                  includeAddresses: bundle.value.includeAddresses,
+                  size: bundle.value.size,
+                  json: bundle.value.json,
+                },
+          recentRing: ring.value,
+          asOf: deps.now(),
+        } as unknown as Readonly<Record<string, unknown>>);
+      }
       const status = await deps.projections.status();
       if (!status.ok) return err(status.error);
       const scan = await deps.journal.scanTail();

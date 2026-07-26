@@ -36,6 +36,8 @@ import { createIntentLedger } from '@/infrastructure/intents/ledger.js';
 import { createJournal } from '@/infrastructure/journal/index.js';
 import { DEV_A, openEngine, testId } from '@/infrastructure/journal/core/testkit.js';
 import { createV1ProjectionEngine } from '@/infrastructure/projections/index.js';
+import { createDiagnosticsAdapter } from '@/infrastructure/diagnostics/index.js';
+import type { SearchRankPort } from '@/application/ports/search.port.js';
 import type { EventEnvelope } from '@/shared-kernel/events/index.js';
 import { createIdGenerator } from '@/shared-kernel/identity/index.js';
 import { err, ledgeError, ok, type LedgeError, type Result } from '@/shared-kernel/result/index.js';
@@ -220,6 +222,16 @@ export const makeFakeSessions = (initial: readonly RecentlyClosedTab[] = []): Fa
   };
 };
 
+/** E6-T03 probe-deps seam: a quiet SearchRankPort — index built and clean;
+ *  rank queries honestly unavailable (the harness proves freshness reads, not BM25). */
+const makeQuietSearchRank = (): SearchRankPort => ({
+  freshness: () => Promise.resolve(ok({ lag: 0, dirty: false, tokenizerV: 1 })),
+  query: () =>
+    Promise.resolve(err(ledgeError('E_CAPABILITY', { op: 'search.query', why: 'quiet-fake' }))),
+  dupesFor: () => Promise.resolve(ok([])),
+  ensureIndexFresh: () => Promise.resolve(),
+});
+
 // ─────────────────────────── fake snapshots port ──────────────────────────
 
 export interface FakeSnapshots extends SnapshotsPort {
@@ -359,6 +371,10 @@ export const makeServices = async (
     /** E6-T02 cross-check seam (default: empty-backlog fake; pass a FakeSessions.port
      *  to pre-seed the Recently Closed backlog). */
     readonly sessions?: NativeSessionsPort | undefined;
+    /** E6-T03 diagnostics seam (default: the REAL adapter over the harness engine —
+     *  ring rows genuinely land in the test IDB; sabotage proofs live with the
+     *  infrastructure suite, not here). */
+    readonly diagnostics?: ServiceDeps['diagnostics'];
     readonly importer?: ServiceDeps['importer'];
     readonly exporter?: ServiceDeps['exporter'];
     readonly importBytesStage?: ServiceDeps['importBytesStage'];
@@ -402,6 +418,21 @@ export const makeServices = async (
     tabs: opts.tabs ?? fakeTabs,
     windows: opts.windows ?? fakeWindows,
     sessions: opts.sessions ?? makeFakeSessions().port,
+    diagnostics:
+      opts.diagnostics ??
+      createDiagnosticsAdapter({
+        engine,
+        ids,
+        now,
+        probes: {
+          engine,
+          journal,
+          projections,
+          ledger,
+          search: makeQuietSearchRank(),
+          now,
+        },
+      }),
     ids,
     deviceId: DEV_A,
     now,

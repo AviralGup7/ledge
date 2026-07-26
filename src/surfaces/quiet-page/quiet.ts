@@ -1220,30 +1220,201 @@ export const mountQuietPage = (doc: Document, deps: QuietDeps): Mounted => {
     content.appendChild(exportBlock);
   };
 
-  // ── rescue console ────────────────────────────────────────────────────────────
+  // ── rescue console (E6-T04/T05/T06: §12 probes UI, bundle download, cadence) ──
+  interface ProbeWire {
+    readonly name: string;
+    readonly wired: boolean;
+    readonly status: string;
+    readonly fields: Readonly<Record<string, unknown>>;
+  }
+  interface RingRowWire {
+    readonly kind: string;
+    readonly level: string;
+    readonly msg: string;
+    readonly at: number;
+  }
+  /** The parsed health dump for this console session (null = pre-answer). */
+  let rescueHealth: {
+    probes: readonly ProbeWire[];
+    ring: readonly RingRowWire[];
+    lastBundle: { bundleId: string; size: number; json: string } | null;
+  } | null = null;
+  /** Timeline filter (kind chip; 'all' shows everything). */
+  let ringFilter = 'all';
+
+  const asProbeRows = (v: unknown): readonly ProbeWire[] => {
+    if (!Array.isArray(v)) return [];
+    return (v as readonly unknown[])
+      .map((row) => asRecord(row))
+      .filter((row) => typeof row['name'] === 'string')
+      .map((row) => ({
+        name: asString(row['name']),
+        wired: row['wired'] === true,
+        status: asString(row['status']),
+        fields: asRecord(row['fields']),
+      }));
+  };
+
+  const asRingRows = (v: unknown): readonly RingRowWire[] => {
+    if (!Array.isArray(v)) return [];
+    return (v as readonly unknown[])
+      .map((row) => asRecord(row))
+      .filter((row) => typeof row['kind'] === 'string' && typeof row['at'] === 'number')
+      .map((row) => ({
+        kind: asString(row['kind']),
+        level: asString(row['level']),
+        msg: asString(row['msg']),
+        at: asNumber(row['at']),
+      }));
+  };
+
+  const STATUS_CHIP_COPY: Readonly<Record<string, string>> = {
+    ok: 'msg.state.probe-ok',
+    warn: 'msg.state.probe-warn',
+    fail: 'msg.state.probe-fail',
+    unwired: 'msg.state.probe-unwired',
+  };
+
+  const RING_FILTERS: readonly { id: string; copyKey: string }[] = [
+    { id: 'all', copyKey: 'msg.rescue.filter-all' },
+    { id: 'command', copyKey: 'msg.rescue.filter-commands' },
+    { id: 'scan', copyKey: 'msg.rescue.filter-scans' },
+    { id: 'bundle', copyKey: 'msg.rescue.filter-bundles' },
+    { id: 'probe', copyKey: 'msg.rescue.filter-probes' },
+    { id: 'diag', copyKey: 'msg.rescue.filter-diagnostics' },
+  ];
+
+  const renderRingList = (mount: HTMLElement): void => {
+    clearChildren(mount);
+    const ring = rescueHealth?.ring ?? [];
+    mount.appendChild(
+      el(doc, 'p', {
+        cls: 'state-recovery',
+        text:
+          ring.length === 0
+            ? copyOf('msg.rescue.timeline-empty')
+            : copyOf('msg.rescue.timeline-head', { count: ring.length }),
+        attrs: { 'data-line': 'ring-head' },
+      }),
+    );
+    const chips = el(doc, 'div', { cls: 'ring-filters', attrs: { role: 'toolbar' } });
+    for (const f of RING_FILTERS) {
+      chips.appendChild(
+        el(doc, 'button', {
+          cls: ringFilter === f.id ? 'btn btn-chip is-active' : 'btn btn-chip',
+          text: copyOf(f.copyKey),
+          attrs: {
+            type: 'button',
+            'data-action': `ring-filter-${f.id}`,
+            'aria-pressed': ringFilter === f.id ? 'true' : 'false',
+          },
+          on: {
+            click: () => {
+              ringFilter = f.id;
+              renderRingList(mount);
+            },
+          },
+        }),
+      );
+    }
+    mount.appendChild(chips);
+    const list = el(doc, 'ul', {
+      cls: 'ring-list',
+      attrs: { 'data-panel': 'ring-timeline', role: 'list' },
+    });
+    for (const row of ring) {
+      if (ringFilter !== 'all' && row.kind !== ringFilter) continue;
+      list.appendChild(
+        el(doc, 'li', {
+          cls: `ring-row ring-${row.level}`,
+          text: `${relTimeOf(row.at)} · ${row.kind} · ${row.msg}`,
+          attrs: { 'data-line': 'ring-row', 'data-kind': row.kind },
+        }),
+      );
+    }
+    mount.appendChild(list);
+  };
+
   const renderRescue = (): void => {
     clearChildren(content);
+    ringFilter = 'all';
+    rescueHealth = null;
     content.appendChild(
       el(doc, 'h2', { cls: 'section-title', text: copyOf('msg.section.rescue') }),
     );
     content.appendChild(el(doc, 'p', { cls: 'state-recovery', text: copyOf('msg.hint.rescue') }));
     const bar = el(doc, 'div', { cls: 'rescue-bar', attrs: { role: 'toolbar' } });
+    const reportChip = (reportId: string, tag: string): void => {
+      streamsSlot.appendChild(
+        el(doc, 'p', {
+          cls: 'chip chip-report',
+          text: reportId.length > 0 ? reportId : copyOf('msg.dialog.scan-done'),
+          attrs: { 'data-report': tag },
+        }),
+      );
+    };
+    const renderForceConfirm = (d: Document): HTMLElement => {
+      const box = el(d, 'div', {
+        cls: 'force-confirm',
+        attrs: { 'data-panel': 'scan-force-confirm', role: 'alert' },
+      });
+      box.appendChild(
+        el(d, 'p', {
+          cls: 'state-recovery',
+          text: copyOf('msg.rescue.force-confirm'),
+          attrs: { 'data-line': 'force-confirm-copy' },
+        }),
+      );
+      box.appendChild(
+        actionButton(d, {
+          copyKey: 'msg.action.scan-full-confirm',
+          action: 'scan-full-force',
+          onClick: () => {
+            box.remove();
+            runCommand('RescueScanNow', { mode: 'full', force: true }, (value) => {
+              reportChip(asString(asRecord(value)['reportId']), 'scan-full');
+              live.say(copyOf('msg.dialog.scan-done'));
+            });
+          },
+        }),
+      );
+      return box;
+    };
     bar.appendChild(
       actionButton(doc, {
         copyKey: 'msg.action.scan',
         action: 'rescue-scan',
         onClick: () => {
           runCommand('RescueScanNow', { mode: 'tail' }, (value) => {
-            const report = asRecord(value);
-            const reportId = asString(report['reportId']);
-            streamsSlot.appendChild(
-              el(doc, 'p', {
-                cls: 'chip chip-report',
-                text: reportId.length > 0 ? reportId : copyOf('msg.dialog.scan-done'),
-                attrs: { 'data-report': 'scan' },
-              }),
-            );
+            reportChip(asString(asRecord(value)['reportId']), 'scan');
           });
+        },
+      }),
+    );
+    // E6-T06: full scan — C24 cadence law rides the service; the refusal turns
+    // into a calm confirm (the console holds the rescue capability; the server
+    // re-verifies the envelope on the forced resend).
+    bar.appendChild(
+      actionButton(doc, {
+        copyKey: 'msg.action.scan-full',
+        action: 'rescue-scan-full',
+        onClick: () => {
+          runCommand(
+            'RescueScanNow',
+            { mode: 'full' },
+            (value) => {
+              reportChip(asString(asRecord(value)['reportId']), 'scan-full');
+              live.say(copyOf('msg.dialog.scan-done'));
+            },
+            (error) => {
+              const reason = asRecord(error.details)['reason'];
+              if (error.code === 'E_DOMAIN_LEGALITY' && reason === 'full-scan-cadence') {
+                streamsSlot.appendChild(renderForceConfirm(doc));
+                return;
+              }
+              live.say(copyOf('msg.error.output'));
+            },
+          );
         },
       }),
     );
@@ -1271,13 +1442,54 @@ export const mountQuietPage = (doc: Document, deps: QuietDeps): Mounted => {
         onClick: () => {
           runCommand('ExportDiagnostics', {}, () => {
             live.say(copyOf('msg.dialog.diagnostics-done'));
+            renderRescue(); // the fresh bundle lands in the dump → download armed
           });
+        },
+      }),
+    );
+    // E6-T05: download rides the ALREADY-LOCAL bundle json (ADR-027: leaves the
+    // device only on this explicit gesture; zero network, zero regeneration).
+    // Armed post-answer when the dump carries lastBundle (data-armed state).
+    bar.appendChild(
+      el(doc, 'button', {
+        cls: 'btn',
+        text: copyOf('msg.action.download-bundle'),
+        attrs: {
+          type: 'button',
+          'data-action': 'download-bundle',
+          'data-armed': 'false',
+          'aria-disabled': 'true',
+        },
+        on: {
+          click: () => {
+            const b = rescueHealth?.lastBundle;
+            if (b === null || b === undefined) return;
+            // Host-capability guard: test lanes without Blob/URL skip the file
+            // gesture calmly (the bundle stays inspectable in the dump).
+            if (
+              typeof Blob === 'undefined' ||
+              typeof URL === 'undefined' ||
+              typeof URL.createObjectURL !== 'function'
+            ) {
+              live.say(copyOf('msg.dialog.diagnostics-done'));
+              return;
+            }
+            const href = URL.createObjectURL(new Blob([b.json], { type: 'application/json' }));
+            const anchor = el(doc, 'a', {
+              attrs: { href, download: `${b.bundleId}.json` },
+            });
+            anchor.click();
+            URL.revokeObjectURL(href);
+            live.say(copyOf('msg.dialog.download-done'));
+          },
         },
       }),
     );
     content.appendChild(bar);
     const dumpSlot = el(doc, 'div', { attrs: { 'data-slot': 'health' } });
     content.appendChild(dumpSlot);
+    const ringSlot = el(doc, 'div', { attrs: { 'data-slot': 'ring-timeline' } });
+    content.appendChild(ringSlot);
     dumpSlot.appendChild(renderLoading(doc));
     const q = client.query('GetHealth', {});
     void q.terminal.then((t) => {
@@ -1293,13 +1505,88 @@ export const mountQuietPage = (doc: Document, deps: QuietDeps): Mounted => {
         );
         return;
       }
-      dumpSlot.appendChild(
+      const raw = asRecord(t.value);
+      const health = {
+        probes: asProbeRows(raw['probes']),
+        ring: asRingRows(raw['recentRing']),
+        lastBundle: (() => {
+          const b = raw['lastBundle'];
+          if (b === null || b === undefined) return null;
+          const rec = asRecord(b);
+          return {
+            bundleId: asString(rec['bundleId']),
+            size: asNumber(rec['size']),
+            json: typeof rec['json'] === 'string' ? rec['json'] : '',
+          };
+        })(),
+      };
+      rescueHealth = health.lastBundle !== null || health.probes.length > 0 ? health : null;
+      // Arm the download gesture with the post-answer bundle presence (click
+      // guard reads rescueHealth either way — the chip state is honesty, not law).
+      const dl = content.querySelector('[data-action="download-bundle"]');
+      if (dl !== null && health.lastBundle !== null) {
+        dl.setAttribute('data-armed', 'true');
+        dl.setAttribute('aria-disabled', 'false');
+      }
+      if (health.probes.length > 0) {
+        dumpSlot.appendChild(
+          el(doc, 'p', {
+            cls: 'state-recovery',
+            text: copyOf('msg.rescue.probes-head', { count: health.probes.length }),
+            attrs: { 'data-line': 'probes-head' },
+          }),
+        );
+        const rows = el(doc, 'ul', {
+          cls: 'probe-list',
+          attrs: { 'data-panel': 'probe-list', role: 'list' },
+        });
+        for (const probe of health.probes) {
+          const row = el(doc, 'li', {
+            cls: `probe-row probe-${probe.status}`,
+            attrs: { 'data-line': 'probe-row', 'data-status': probe.status },
+          });
+          row.appendChild(
+            el(doc, 'span', {
+              cls: `chip chip-probe chip-${probe.status}`,
+              text: copyOf(STATUS_CHIP_COPY[probe.status] ?? 'msg.state.probe-ok'),
+              attrs: { 'data-chip': `probe-${probe.status}` },
+            }),
+          );
+          row.appendChild(
+            el(doc, 'span', {
+              cls: 'probe-name',
+              text: probe.name,
+              attrs: { 'data-line': 'probe-name' },
+            }),
+          );
+          row.appendChild(
+            el(doc, 'span', {
+              cls: 'probe-fields',
+              text: JSON.stringify(probe.fields),
+              attrs: { 'data-line': 'probe-fields' },
+            }),
+          );
+          rows.appendChild(row);
+        }
+        dumpSlot.appendChild(rows);
+        renderRingList(ringSlot);
+      }
+      // The raw dump stays — folded away as the tell-me-more lane (either shape).
+      const fold = el(doc, 'details', { cls: 'probe-fold', attrs: { 'data-panel': 'probe-fold' } });
+      fold.appendChild(
+        el(doc, 'summary', {
+          text: copyOf('msg.action.details'),
+          attrs: { 'data-action': 'probe-fold' },
+        }),
+      );
+      fold.appendChild(
         el(doc, 'pre', {
           cls: 'probe-dump',
           text: JSON.stringify(t.value),
           attrs: { 'data-probe-dump': '', tabindex: '0' },
         }),
       );
+      dumpSlot.appendChild(fold);
     });
   };
 

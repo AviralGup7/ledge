@@ -9,7 +9,6 @@
 import type { MessageZone } from '@/application/contracts/index.js';
 import { createAppEventBus, type AppEventBus } from '@/application/hub/dispatch/app-events.js';
 import { createDispatcher, type Dispatcher } from '@/application/hub/dispatch/dispatcher.js';
-import { createRingLogSink } from '@/application/hub/dispatch/log.js';
 import { createHandlerRegistry } from '@/application/hub/dispatch/registry.js';
 import { createIngestHub, type IngestHub } from '@/application/hub/ingest/index.js';
 import {
@@ -24,6 +23,14 @@ import type {
 } from '@/application/ports/import-export.port.js';
 import type { SearchRankPort } from '@/application/ports/search.port.js';
 import type { NativeSessionsPort } from '@/application/ports/sessions.port.js';
+import type { DiagnosticsPort } from '@/application/ports/diagnostics.port.js';
+import { createDiagnosticsAdapter } from '@/infrastructure/diagnostics/index.js';
+import {
+  createRingLogSink,
+  fanOutSinks,
+  type CommandLogEntry,
+  type StructuredLogSink,
+} from '@/application/hub/dispatch/log.js';
 import type { JournalPort } from '@/application/ports/journal.port.js';
 import type { IntentLedgerPort } from '@/application/ports/intent-ledger.port.js';
 import type { ProjectionEnginePort } from '@/application/ports/projection-engine.port.js';
@@ -167,6 +174,9 @@ export interface BackgroundRuntimeDeps {
   /** E6-T02 sessions cross-check seam (default: the lazy chrome.sessions
    *  adapter — E3-T03 read-only law; undefined-able in chrome-less hosts). */
   readonly sessions?: NativeSessionsPort | undefined;
+  /** E6-T03 diagnostics seam (default: the IDB unified ring adapter — ring,
+   *  redactor, §12 probes, bundle; EES §2.15). */
+  readonly diagnostics?: DiagnosticsPort | undefined;
   /** §3.5 transport seam; default is the guarded chrome.runtime broadcast (silent
    *  drop when no surface is listening — streams are fire-and-forget by law). */
   readonly publish?: ((message: WireStreamMessage) => void) | undefined;
@@ -455,11 +465,23 @@ const buildRuntime = (
   // E6-T02: the services-tier cross-check seam — same E3-T03 read-only adapter
   // the recovery boot act's reconciler seam uses (lazy ambient, chrome-less safe).
   const sessions = deps.sessions ?? createChromeSessionsAdapter();
+  // E6-T03: unified typed observability ring (user-ruled F4) — the dispatcher's
+  // command lifecycle AND the diagnostic events share ONE IDB ring (500,
+  // redacted, batched-flush). The §12 probe registry reads ride the same seams.
+  const diagnostics =
+    deps.diagnostics ??
+    createDiagnosticsAdapter({
+      engine: storage,
+      ids,
+      now,
+      probes: { engine: storage, journal, projections, ledger, search: searchRank, now },
+    });
   const services = createServices({
     engine: storage,
     journal,
     projections,
     ledger,
+    diagnostics,
     snapshots: deps.snapshots ?? createSnapshotsAdapter({ engine: storage, ids }),
     tabs,
     windows: deps.windows ?? createChromeWindowsAdapter(),
@@ -491,17 +513,39 @@ const buildRuntime = (
   // meantime (§2.11 fallback law). SW-chunked v1; §3.6 offscreen build is the 50k door.
   void searchRank.ensureIndexFresh();
 
+  // E6-T03 F4: command lifecycle flows into the unified ring beside the in-memory
+  // ring (the memory ring stays the test/inspection seam; the IDB ring is the
+  // durable 500-slot observability timeline). Failed verbs warn — they carry the
+  // legality refusals an operator hunts.
+  const diagSink: StructuredLogSink = {
+    write: (entry: CommandLogEntry) => {
+      diagnostics.log({
+        level: entry.outcome === 'failed' ? 'warn' : entry.outcome === 'applied' ? 'info' : 'debug',
+        kind: 'command',
+        msg: `${entry.kind}:${entry.name}:${entry.outcome}`,
+        fields: {
+          cid: entry.cid,
+          sender: entry.senderContext,
+          durationMs: entry.durationMs,
+          lane: entry.lane,
+          ...(entry.errorCode !== undefined ? { errorCode: entry.errorCode } : {}),
+        },
+      });
+    },
+  };
+  const logSink = fanOutSinks([createRingLogSink(), diagSink]);
+
   const wire = createDispatcher<AppServices>({
     registry: createHandlerRegistry({ commands: WIRE_COMMANDS, queries: WIRE_QUERIES }),
     services,
-    logSink: createRingLogSink(),
+    logSink,
     events: bus,
     now,
   });
   const internal = createDispatcher<AppServices>({
     registry: createHandlerRegistry({ commands: INTERNAL_COMMANDS, queries: INTERNAL_QUERIES }),
     services,
-    logSink: createRingLogSink(),
+    logSink,
     events: bus,
     now,
     // Tier-2 validation: internal names have no §3 wire-registry rows — the roster IS
@@ -512,6 +556,11 @@ const buildRuntime = (
     },
   });
   const stopOutbox = outbox.start();
+
+  // E6-T03: redactor self-test on boot (EES §5 logs row) — fire-and-forget like
+  // every boot act; a degraded verdict lives on the lifecycle probe (diag-selftest),
+  // never as a boot fault.
+  void diagnostics.selfTest().catch(() => undefined);
 
   // E6-T01 · The recovery graph lands here (E2's placeholder): SW wake ⇒ boot
   // sequence (marker classify → reconcile) → incident slot (services.recovery)
