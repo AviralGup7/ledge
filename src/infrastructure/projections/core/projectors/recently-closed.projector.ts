@@ -22,6 +22,7 @@ const maybeId = (v: unknown): string | undefined => {
 export const recentlyClosedProjector: ProjectorDef = {
   view: 'recentlyClosed',
   store: 'recently_closed',
+  keyField: 'entryId',
   projectorV: 1,
   async project(event): Promise<readonly DeltaOp[]> {
     const p = event.payload as Record<string, unknown>;

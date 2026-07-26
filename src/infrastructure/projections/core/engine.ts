@@ -134,7 +134,7 @@ export function createProjectionEngine(deps: ProjectionEngineDeps): ProjectionEn
                   await table.put({
                     ...(current ?? {}),
                     ...op.fields,
-                    ...primaryKeyOf(projector.store, op.key),
+                    ...primaryKeyOf(projector, op.key),
                   });
                 }
                 const list = opsByView.get(projector.view) ?? [];
@@ -275,9 +275,7 @@ export function createProjectionEngine(deps: ProjectionEngineDeps): ProjectionEn
         const table = tx.table<StoredRecord>(projector.store);
         const rows = await table.toArray();
         await table.deleteMany(
-          rows
-            .map((r) => primaryKeyOfRow(projector.store, r))
-            .filter((k): k is StorageKey => k !== null),
+          rows.map((r) => primaryKeyOfRow(projector, r)).filter((k): k is StorageKey => k !== null),
         );
         const wmTable = await readWatermarkTable(tx);
         for (const key of Object.keys(wmTable)) {
@@ -335,9 +333,12 @@ export function createProjectionEngine(deps: ProjectionEngineDeps): ProjectionEn
   };
 }
 
-/** pk field per view store (wipe + patch-identity law). */
-const primaryKeyFieldOf = (store: StoreName): string => {
-  switch (store) {
+/** pk field per view projector (wipe + patch-identity law). The projector DEF declares
+ *  it (keyField — registry-growth law); the legacy per-store fallback covers def-free
+ *  fixtures. */
+const primaryKeyFieldOf = (projector: ProjectorDef): string => {
+  if (projector.keyField !== undefined) return projector.keyField;
+  switch (projector.store) {
     case 'missions':
       return 'missionId';
     case 'recently_closed':
@@ -353,26 +354,20 @@ const primaryKeyFieldOf = (store: StoreName): string => {
  * E2-T08: without this the wipe-address was a single field and the compound
  * store silently kept its rows across rebuilds.
  */
-const primaryKeyOfRow = (store: StoreName, row: StoredRecord): StorageKey | null => {
-  if (store === 'sessions') {
+const primaryKeyOfRow = (projector: ProjectorDef, row: StoredRecord): StorageKey | null => {
+  if (projector.store === 'sessions') {
     const snapshotId = row['snapshotId'];
     const partIndex = row['partIndex'];
     return typeof snapshotId === 'string' && typeof partIndex === 'number'
       ? [snapshotId, partIndex]
       : null;
   }
-  const k = row[primaryKeyFieldOf(store)];
+  const k = row[primaryKeyFieldOf(projector)];
   return typeof k === 'string' && k.length > 0 ? k : null;
 };
 
 /** Patch law: the store's pk field must survive the merge (shallow patch never drops it). */
-const primaryKeyOf = (store: StoreName, key: string): Record<string, unknown> => {
-  switch (store) {
-    case 'missions':
-      return { missionId: key };
-    case 'recently_closed':
-      return { entryId: key };
-    default:
-      return {};
-  }
+const primaryKeyOf = (projector: ProjectorDef, key: string): Record<string, unknown> => {
+  if (projector.store === 'sessions') return {}; // compound pk: patch addressing is N/A
+  return { [primaryKeyFieldOf(projector)]: key };
 };

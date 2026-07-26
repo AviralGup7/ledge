@@ -39,6 +39,7 @@ const isMissionRow = (r: StoredRecord | undefined): r is StoredRecord & MissionV
 export const missionsProjector: ProjectorDef = {
   view: 'missions',
   store: 'missions',
+  keyField: 'missionId',
   projectorV: 1,
   async project(event, read): Promise<readonly DeltaOp[]> {
     const p = event.payload as Record<string, unknown>;
@@ -108,6 +109,101 @@ export const missionsProjector: ProjectorDef = {
         const missionId = str(p['missionId']);
         return [
           { kind: 'patch', key: missionId, fields: { state: 'archived', lastActiveAt: wall } },
+        ];
+      }
+      case 'ParkIntentAccepted': {
+        // E3-APP state-parked derivation: the ACCEPTED intent stamps 'parked' on the
+        // mission row (durability-first reading — the intent IS durable; scope carries
+        // missionId by app record contract). An aborted intent has no §4 revert
+        // carrier in v1 (gap recorded in docs/adr-notes/e3-app-layer.md); the
+        // conservative direction (reads parked, browser truth disclosed by recovery
+        // surfaces) is the documented v1 posture.
+        const scope = p['scope'];
+        if (typeof scope !== 'object' || scope === null) return [];
+        const missionId = str((scope as Record<string, unknown>)['missionId']);
+        if (missionId.length === 0) return [];
+        const intentId = str(p['intentId']);
+        return [
+          {
+            kind: 'patch',
+            key: missionId,
+            fields: {
+              state: 'parked',
+              ...(intentId.length > 0 ? { parkIntentId: intentId } : {}),
+              lastActiveAt: wall,
+            },
+          },
+        ];
+      }
+      case 'MissionResumed': {
+        // §6.5 state=OPEN: resume re-opens the mission; the mapping record MAY carry
+        // the bound Chrome window ('windowId' — app-owned record key), which re-arms
+        // windowBinding. An empty mapping (undo-of-archive replay) clears nothing.
+        const missionId = str(p['missionId']);
+        if (missionId.length === 0) return [];
+        const mapping = p['restoredMapping'];
+        const windowId =
+          typeof mapping === 'object' && mapping !== null
+            ? (mapping as Record<string, unknown>)['windowId']
+            : undefined;
+        return [
+          {
+            kind: 'patch',
+            key: missionId,
+            fields: {
+              state: 'live',
+              parkIntentId: null,
+              ...(typeof windowId === 'number' ? { windowBinding: windowId } : {}),
+              lastActiveAt: wall,
+            },
+          },
+        ];
+      }
+      case 'MissionConcluded': {
+        const missionId = str(p['missionId']);
+        return [{ kind: 'patch', key: missionId, fields: { concluded: true, lastActiveAt: wall } }];
+      }
+      case 'EntityTrashed': {
+        if (str(p['kind']) !== 'mission') return [];
+        const missionId = str(p['id']);
+        if (missionId.length === 0) return [];
+        return [
+          {
+            kind: 'patch',
+            key: missionId,
+            fields: {
+              state: 'trash',
+              deletedAt: typeof p['deletedAt'] === 'number' ? p['deletedAt'] : wall,
+              lastActiveAt: wall,
+            },
+          },
+        ];
+      }
+      case 'TrashRestored': {
+        if (str(p['kind']) !== 'mission') return [];
+        const missionId = str(p['id']);
+        if (missionId.length === 0) return [];
+        return [
+          {
+            kind: 'patch',
+            key: missionId,
+            fields: { state: 'live', deletedAt: null, lastActiveAt: wall },
+          },
+        ];
+      }
+      case 'TrashPurged': {
+        if (str(p['kind']) !== 'mission') return [];
+        const missionId = str(p['id']);
+        if (missionId.length === 0) return [];
+        return [{ kind: 'remove', key: missionId }];
+      }
+      case 'WindowClosedExternal': {
+        // §5 windowBinding lifecycle: the browser window died under a bound mission —
+        // binding clears; membership/state are tab-events' business.
+        const missionId = str(p['missionId']);
+        if (missionId.length === 0) return [];
+        return [
+          { kind: 'patch', key: missionId, fields: { windowBinding: null, lastActiveAt: wall } },
         ];
       }
       default:

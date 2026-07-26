@@ -3,7 +3,7 @@
 // faithfulness (frames alone reconstruct the stores).
 import * as fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import type { ViewDeltaFrame } from '@/application/ports/projection-engine.port.js';
+import type { ViewDeltaFrame, ViewName } from '@/application/ports/projection-engine.port.js';
 import type { EventEnvelope } from '@/shared-kernel/events/index.js';
 import { stableStringify } from '@/shared-kernel/canon/index.js';
 import { createV1ProjectionEngine } from './index.js';
@@ -71,26 +71,35 @@ const snapshotPair = async (h: ProjectionHarness): Promise<string> =>
     missions: await storeSnapshot(h, 'missions'),
     recently_closed: await storeSnapshot(h, 'recently_closed'),
     sessions: await storeSnapshot(h, 'sessions'), // E2-T08: third v1 view
+    tabs: await storeSnapshot(h, 'tabs'), // E3-APP: fourth v1 view
   });
 
 /** Replay one delta stream onto empty shelves (§3.5 faithfulness harness). */
 const replayFrames = (frames: readonly ViewDeltaFrame[]): string => {
-  const stores: Record<
-    'missions' | 'recently_closed' | 'sessions',
-    Map<string, Record<string, unknown>>
-  > = {
+  type ShelfName = 'missions' | 'recently_closed' | 'sessions' | 'tabs';
+  const stores: Record<ShelfName, Map<string, Record<string, unknown>>> = {
     missions: new Map(),
     recently_closed: new Map(),
     sessions: new Map(),
+    tabs: new Map(),
   };
-  const shelfOf = (view: 'missions' | 'recentlyClosed' | 'sessions') =>
-    view === 'missions'
-      ? stores.missions
-      : view === 'sessions'
-        ? stores.sessions
-        : stores.recently_closed;
-  const pkOf = (view: 'missions' | 'recentlyClosed' | 'sessions'): string =>
-    view === 'missions' ? 'missionId' : 'entryId';
+  // E3-APP: fold is total over ViewName (growth-lawful — new views join the model);
+  // patch pk addressing mirrors the engine's keyField law.
+  const shelfNameOf = (view: ViewName): ShelfName =>
+    view === 'recentlyClosed' ? 'recently_closed' : view;
+  const pkOf = (view: ViewName): string => {
+    switch (view) {
+      case 'missions':
+        return 'missionId';
+      case 'recentlyClosed':
+        return 'entryId';
+      case 'tabs':
+        return 'ledgeTabId';
+      default:
+        return 'entryId';
+    }
+  };
+  const shelfOf = (view: ViewName) => stores[shelfNameOf(view)];
   for (const frame of frames) {
     const store = shelfOf(frame.view);
     for (const op of frame.ops) {
@@ -108,6 +117,7 @@ const replayFrames = (frames: readonly ViewDeltaFrame[]): string => {
     missions: asArray(stores.missions),
     recently_closed: asArray(stores.recently_closed),
     sessions: asArray(stores.sessions),
+    tabs: asArray(stores.tabs),
   });
 };
 

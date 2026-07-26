@@ -12,8 +12,10 @@ import type { EventEnvelope } from '@/shared-kernel/events/index.js';
 import type { DeviceId } from '@/shared-kernel/identity/device-id.js';
 import type { LedgeError, Result } from '@/shared-kernel/result/index.js';
 
-/** v1 view surface (register per view; grows as use-cases land E3+). */
-export type ViewName = 'missions' | 'recentlyClosed' | 'sessions';
+/** v1 view surface (register per view; grows as use-cases land E3+).
+ *  E3-APP: 'tabs' joins — per-tab lifecycle truth (LIVE|KEPT|TRASH) is the read
+ *  foundation of C7/C10/C15/C16 + R10 heartbeat semantics. */
+export type ViewName = 'missions' | 'recentlyClosed' | 'sessions' | 'tabs';
 
 /** §2.10 watermark: highest APPLIED (seq, batchIndex) per (view, device). */
 export type Watermark = {
@@ -66,6 +68,14 @@ export type ProjectionStatus = {
 export interface ProjectorDef {
   readonly view: ViewName;
   readonly store: StoreName;
+  /**
+   * E3-APP registry-growth law: the store's plain string pk field, declared by the
+   * projector (patch-materialization + rebuild-wipe addressing derive from it).
+   * Compound-pk stores (sessions: [snapshotId+partIndex]) OMIT it — the engine's
+   * tuple-key wipe law covers them. Growth beyond the E2 reference set must not
+   * require engine core edits (fc seed -159411701 class, tabs view).
+   */
+  readonly keyField?: string | undefined;
   /** Bump ⇒ rebuild-on-change (§2.10 versioning law: recorded with watermarks). */
   readonly projectorV: number;
   /**

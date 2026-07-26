@@ -127,7 +127,7 @@ export interface OpenTabView {
 const str = (v: unknown, fallback = ''): string => (typeof v === 'string' ? v : fallback);
 const num = (v: unknown, fallback = 0): number => (typeof v === 'number' ? v : fallback);
 
-const KNOWN_STATES: readonly string[] = ['live', 'archived', 'trash'];
+const KNOWN_STATES: readonly string[] = ['live', 'parked', 'archived', 'trash'];
 
 export const missionViewOf = (
   row: MissionViewRow | (StoredRecord & { tabIds?: unknown }),

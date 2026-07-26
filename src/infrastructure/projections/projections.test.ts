@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import type { ProjectorDef } from '@/application/ports/projection-engine.port.js';
 import type { StoredRecord } from '@/application/ports/storage-engine.port.js';
 import { createProjectionEngine } from './core/engine.js';
+import { V1_PROJECTORS } from './index.js';
 import { missionsProjector } from './core/projectors/missions.projector.js';
 import { recentlyClosedProjector } from './core/projectors/recently-closed.projector.js';
 import {
@@ -129,7 +130,8 @@ describe('§2.10 invariants', () => {
     if (!r.ok) throw new Error('burst failed');
     for (const frame of h.frames) {
       expect(frame.ops.length).toBeLessThanOrEqual(FRAME_OPS_CAP);
-      expect(['missions', 'recentlyClosed']).toContain(frame.view);
+      // Growth-lawful: frames may only carry REGISTERED views (E3-APP added 'tabs').
+      expect(V1_PROJECTORS.map((p) => p.view)).toContain(frame.view);
       expect(frame.watermark.seq).toBeGreaterThan(0);
     }
     const missionsFrames = h.frames.filter((f) => f.view === 'missions');

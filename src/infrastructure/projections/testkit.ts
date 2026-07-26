@@ -99,7 +99,7 @@ export const seedJournal = async (
 
 export const storeSnapshot = async (
   h: ProjectionHarness,
-  store: 'missions' | 'recently_closed' | 'sessions',
+  store: 'missions' | 'recently_closed' | 'sessions' | 'tabs',
 ): Promise<readonly StoredRecord[]> => {
   const r = await h.engine.txn([store], 'readonly', (tx) =>
     tx.table<StoredRecord>(store).toArray(),

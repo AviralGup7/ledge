@@ -5,16 +5,26 @@
 // the storage engine port — direction law stays infrastructure → application/ports.
 //
 // Rows are forward-tolerant by §2.9: additive fields lawful, unknown preserved.
-/** §5 'missions' row (view shape). Type alias for StoredRecord's implicit signature. */
+/** §5 'missions' row (view shape). Type alias for StoredRecord's implicit signature.
+ *  E3-APP growth (§2.9 additive): 'parked' stamps at ParkIntentAccepted ack (the
+ *  intent-driven derivation — projector-records the durable intent; abort-revert has
+ *  no §4 carrier in v1, recorded in docs/adr-notes/e3-app-layer.md), 'trash' stamps
+ *  at EntityTrashed. windowBinding/parkIntentId/deletedAt are additive row fields. */
 export type MissionViewRow = {
   readonly missionId: string;
   readonly name: string;
   readonly namedBy: string;
-  readonly state: 'live' | 'archived';
+  readonly state: 'live' | 'parked' | 'archived' | 'trash';
   readonly concluded: boolean;
   readonly tabIds: readonly string[];
   readonly createdAt: number;
   readonly lastActiveAt: number;
+  /** Chrome window id while the mission is open (StartMission bind, resume re-bind). */
+  readonly windowBinding?: number | null | undefined;
+  /** The accepted park intent covering this mission (audit/coordinate for R2 flows). */
+  readonly parkIntentId?: string | undefined;
+  /** Trash stamp (state==='trash'); retention reads it. */
+  readonly deletedAt?: number | undefined;
 };
 
 /** §5 'recently_closed' row. */

@@ -2,11 +2,13 @@
 import type { ProjectorDef } from '@/application/ports/projection-engine.port.js';
 import { missionsProjector } from './core/projectors/missions.projector.js';
 import { recentlyClosedProjector } from './core/projectors/recently-closed.projector.js';
+import { tabsStoreProjector } from './core/projectors/tabs.projector.js';
 import { sessionsProjector } from '../snapshots/sessions.projector.js';
 import type { ProjectionEngineDeps } from './core/engine.js';
 import { createProjectionEngine } from './core/engine.js';
 
 export { createProjectionEngine } from './core/engine.js';
+export { tabsStoreProjector } from './core/projectors/tabs.projector.js';
 export type { ProjectionEngineDeps } from './core/engine.js';
 export { missionsProjector } from './core/projectors/missions.projector.js';
 export { recentlyClosedProjector } from './core/projectors/recently-closed.projector.js';
@@ -22,6 +24,7 @@ export const V1_PROJECTORS: readonly ProjectorDef[] = [
   missionsProjector,
   recentlyClosedProjector,
   sessionsProjector,
+  tabsStoreProjector,
 ];
 
 /** Convenience factory on the full v1 set. */
