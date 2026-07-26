@@ -41,7 +41,9 @@
     "test:chaos:evidence": "UPDATE_EVIDENCE=1 vitest run --project chaos ops/tests/chaos",
     "test:perf": "vitest run --project perf",
     "test:perf:update": "PERF_UPDATE_BASELINE=1 vitest run --project perf",
-    "verify:load": "node scripts/load-unpacked.mjs"
+    "verify:load": "node scripts/load-unpacked.mjs",
+    "build:e2e-client": "node scripts/e2e-client-build.mjs",
+    "test:e2e": "pnpm build && pnpm build:e2e-client && vitest run --project e2e"
   },
   "dependencies": {
     "dexie": "^4.0.11"

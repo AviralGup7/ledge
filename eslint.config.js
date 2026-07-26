@@ -64,7 +64,15 @@ const EGRESS_MEMBER_BANS = [
 
 export default tseslint.config(
   {
-    ignores: ['.output/**', '.wxt/**', 'node_modules/**', 'docs/governance/**', 'ops/fixtures/**'],
+    ignores: [
+      '.output/**',
+      '.wxt/**',
+      'node_modules/**',
+      'docs/governance/**',
+      'ops/fixtures/**',
+      // E6-T01: generated e2e page-client bundle (rebuilt by scripts/e2e-client-build.mjs).
+      'ops/tests/e2e/client.js',
+    ],
   },
   ...tseslint.configs.strict,
   {

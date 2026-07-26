@@ -120,6 +120,25 @@ export default defineConfig({
           fileParallelism: false,
         },
       },
+      {
+        resolve: projectResolve,
+        test: {
+          // E6-T01 · real-restart e2e lane (roadmap E6-T01 completion evidence:
+          // "real-restart e2e; exact catalog copy"; EES §6 e2e line: puppeteer-class,
+          // load-unpacked, PR-blocking smoke + full nightly). DECLARED LONG-RUNNING:
+          // every scenario is a full Chromium boot ⇒ SIGKILL ⇒ relaunch cycle, so
+          // the 240s timeout supersedes the 60s single-test house law for this lane.
+          // Never rides default `pnpm test` (unit project-scoped by law) nor ci:all
+          // today — CI wiring (PR smoke + nightly job) is the EES lane's own row.
+          name: 'e2e',
+          include: ['ops/tests/e2e/**/*.test.ts'],
+          pool: 'forks',
+          poolOptions: { forks: { singleFork: true } },
+          fileParallelism: false,
+          testTimeout: 240_000,
+          hookTimeout: 240_000,
+        },
+      },
     ],
   },
 });
