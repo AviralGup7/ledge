@@ -451,9 +451,11 @@ describe('E6-T01 real-restart e2e', () => {
         renderCopy('msg.recovery.scope', { tabs: SCOPE_TAB_COUNT, missions: 1 }),
       );
 
-      // ── disclosure notes (review-first toggle): deferred(1) +
-      //    crosscheck-degraded + marker-gap — the honest inventory of a
-      //    damage-class boot, rendered verbatim from the catalog.
+      // ── disclosure notes (review-first toggle): EXACTLY the deferred(1) note.
+      //    E3-T03: the sessions cross-check is LIVE against a healthy browser, so
+      //    'applied' leaves no crosscheck-degraded note; gaps are empty, so no
+      //    marker-gap note — the honest inventory of THIS damage class is the
+      //    one kept-place intent, rendered verbatim from the catalog.
       await cardPage.click('.recovery-card [data-action="review-first"]');
       const notes = await cardPage.evaluate(() =>
         [...document.querySelectorAll('[data-panel="recovery-review"] li')].map((li) => ({
@@ -462,14 +464,9 @@ describe('E6-T01 real-restart e2e', () => {
         })),
       );
       const byLine = new Map(notes.map((n) => [n.line, n.text]));
+      expect(notes.length).toBe(1);
       expect(byLine.get('recovery-note-deferred')).toBe(
         renderCopy('msg.recovery.note-deferred', { count: 1 }),
-      );
-      expect(byLine.get('recovery-note-crosscheck-degraded')).toBe(
-        renderCopy('msg.recovery.note-crosscheck'),
-      );
-      expect(byLine.get('recovery-note-marker-gap')).toBe(
-        renderCopy('msg.recovery.note-marker-gap'),
       );
 
       // ── put-back: the W7 act itself. Three REAL browser tabs must return

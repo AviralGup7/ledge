@@ -8,6 +8,8 @@ export { createChromeWindowsAdapter } from './windows.adapter.js';
 export type { WindowsAdapterDeps } from './windows.adapter.js';
 export { createChromeStorageAreaAdapter } from './storage-area.adapter.js';
 export type { StorageAreaAdapterDeps } from './storage-area.adapter.js';
+export { createChromeSessionsAdapter, RECENTLY_CLOSED_CAP } from './sessions.adapter.js';
+export type { SessionsAdapterDeps } from './sessions.adapter.js';
 export type {
   ChromeTabLike,
   ChromeTabChangeInfo,
@@ -16,4 +18,8 @@ export type {
   ChromeWindowsApi,
   ChromeStorageAreaLike,
   ChromeStorageApi,
+  ChromeSessionLike,
+  ChromeSessionTabLike,
+  ChromeSessionWindowLike,
+  ChromeSessionsApi,
 } from './api-surface.js';

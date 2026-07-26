@@ -9,6 +9,8 @@ import {
   CHROME_GROUP_ID_NONE,
   CHROME_WINDOW_ID_NONE,
   type ChromeEventSubscription,
+  type ChromeSessionLike,
+  type ChromeSessionsApi,
   type ChromeStorageApi,
   type ChromeStorageAreaLike,
   type ChromeTabChangeInfo,
@@ -82,6 +84,8 @@ export interface FakeChrome {
   readonly tabs: ChromeTabsApi;
   readonly windows: ChromeWindowsApi;
   readonly storage: ChromeStorageApi;
+  /** E3-T03 · chrome.sessions seam (read-only: getRecentlyClosed over a seeded backlog). */
+  readonly sessions: ChromeSessionsApi;
   readonly hooks: {
     /** Drive an onUpdated turn (changeInfo echoed verbatim, chrome-style). */
     readonly updateTab: (tabId: number, changeInfo: ChromeTabChangeInfo) => void;
@@ -90,6 +94,10 @@ export interface FakeChrome {
     readonly sabotageNext: (cause: unknown) => void;
     /** E2-T07 · one-shot sabotage scoped to the NEXT storage-area call. */
     readonly sabotageStorageNext: (cause: unknown) => void;
+    /** E3-T03 · one-shot sabotage scoped to the NEXT sessions call. */
+    readonly sabotageSessionsNext: (cause: unknown) => void;
+    /** E3-T03 · replace the recently-closed backlog (most-recent first). */
+    readonly seedRecentlyClosed: (sessions: readonly ChromeSessionLike[]) => void;
     /**
      * E2-T07 · browser-restart simulation (ADR-007 §4): session storage dies,
      * local persists. SW recycling is simulated by simply NOT calling this.
@@ -150,6 +158,8 @@ export function createFakeChrome(opts: FakeChromeOptions = {}): FakeChrome {
   const localData = new Map<string, unknown>();
   let sessionData = new Map<string, unknown>();
   let storageSabotage: unknown;
+  let sessionsSabotage: unknown;
+  let sessionBacklog: readonly ChromeSessionLike[] = [];
 
   const consumeStorageSabotage = (): unknown => {
     const s = storageSabotage;
@@ -401,10 +411,25 @@ export function createFakeChrome(opts: FakeChromeOptions = {}): FakeChrome {
     onFocusChanged: bus.windowFocusChanged.api,
   };
 
+  // E3-T03 · read-only sessions seam: maxResults honored (platform cap law is
+  // the adapter's, the backlog slice mirrors chrome's filter semantics).
+  const sessionsApi: ChromeSessionsApi = {
+    getRecentlyClosed: (filter) => {
+      if (sessionsSabotage !== undefined) {
+        const s = sessionsSabotage;
+        sessionsSabotage = undefined;
+        return Promise.reject(s);
+      }
+      const cap = filter?.maxResults ?? sessionBacklog.length;
+      return Promise.resolve(sessionBacklog.slice(0, Math.max(0, cap)).map((s) => ({ ...s })));
+    },
+  };
+
   return {
     tabs: tabsApi,
     windows: windowsApi,
     storage: storageApi,
+    sessions: sessionsApi,
     hooks: {
       updateTab: (tabId, changeInfo) => {
         const t = tabs.get(tabId);
@@ -427,6 +452,12 @@ export function createFakeChrome(opts: FakeChromeOptions = {}): FakeChrome {
       },
       sabotageStorageNext: (cause) => {
         storageSabotage = cause;
+      },
+      sabotageSessionsNext: (cause) => {
+        sessionsSabotage = cause;
+      },
+      seedRecentlyClosed: (sessions) => {
+        sessionBacklog = [...sessions];
       },
       clearSessionArea: () => {
         sessionData = new Map();

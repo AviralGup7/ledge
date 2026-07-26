@@ -119,3 +119,34 @@ export interface ChromeWindowsApi {
 export const CHROME_GROUP_ID_NONE = -1;
 /** chrome.windows.WINDOW_ID_NONE — collapsed to null on focus-changed. */
 export const CHROME_WINDOW_ID_NONE = -1;
+
+// ─── E3-T03 · sessions (recovery cross-check reads) ───────────────────────────
+
+/** A session's tab ride-along: a chrome.Tab plus its stable session id. */
+export interface ChromeSessionTabLike extends ChromeTabLike {
+  readonly sessionId?: string | undefined;
+}
+
+/** A closed-window session entry: the window summary plus its tab list. */
+export interface ChromeSessionWindowLike extends ChromeWindowLike {
+  readonly sessionId?: string | undefined;
+  readonly tabs?: readonly ChromeSessionTabLike[] | undefined;
+}
+
+/** chrome.sessions.Session — exactly one of tab/window is present per entry. */
+export interface ChromeSessionLike {
+  readonly lastModified?: number | undefined;
+  readonly tab?: ChromeSessionTabLike | undefined;
+  readonly window?: ChromeSessionWindowLike | undefined;
+}
+
+/**
+ * chrome.sessions as Ledge reads it. READ-ONLY LAW (E3-T03 roadmap row): the
+ * surface deliberately omits `restore`/`getDevices` — recovery reads the backlog
+ * to cross-check, it never lets the platform mutate session state on our behalf.
+ */
+export interface ChromeSessionsApi {
+  readonly getRecentlyClosed: (filter?: {
+    readonly maxResults?: number | undefined;
+  }) => Promise<ChromeSessionLike[]>;
+}

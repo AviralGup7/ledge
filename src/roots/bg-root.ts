@@ -40,6 +40,7 @@ import {
 } from '@/application/usecases/handlers.js';
 import { createServices, type AppServices } from '@/application/usecases/index.js';
 import {
+  createChromeSessionsAdapter,
   createChromeStorageAreaAdapter,
   createChromeTabsAdapter,
   createChromeWindowsAdapter,
@@ -295,6 +296,15 @@ const guardedBroadcast = (message: WireStreamMessage): void => {
 /** Quiet-page card venue (§5.9: the W7 card opens as a SINGLE quiet tab). */
 const QUIET_CARD_PAGE = 'quiet-page.html';
 
+/**
+ * E3-T03 production cross-check (EES §2.13 step 5): the browser's own
+ * recently-closed backlog, URL-projected into the reconciler's candidate seam.
+ */
+const sessionsCrossCheck = async (): Promise<Result<readonly string[], LedgeError>> => {
+  const closed = await createChromeSessionsAdapter().recentlyClosedTabs();
+  return closed.ok ? ok(closed.value.map((t) => t.url)) : err(closed.error);
+};
+
 /** Composition surface the recovery boot act runs against (roots-only seam). */
 export interface RecoveryBootPorts {
   readonly journal: JournalPort;
@@ -310,6 +320,9 @@ export interface RecoveryBootPorts {
   readonly area: StorageAreaPort;
   /** Card-venue opener (default: the guarded single quiet tab). */
   readonly openCard?: (() => void) | undefined;
+  /** Sessions cross-check seam (E3-T03; default: the real adapter read,
+   *  URL-projected; chrome-less hosts degrade to the logged E_CAPABILITY gap). */
+  readonly crossCheck?: (() => Promise<Result<readonly string[], LedgeError>>) | undefined;
 }
 
 export type RecoveryRun = () => Promise<void>;
@@ -349,6 +362,7 @@ export function composeRecoveryRun(ports: RecoveryBootPorts): RecoveryRun {
         journal: ports.journal,
         ledger: ports.ledger,
         projections: ports.projections,
+        crossCheck: ports.crossCheck ?? sessionsCrossCheck,
         liveTabsProbe: async () => {
           const listed = await ports.tabs.query({});
           return listed.ok ? ok(listed.value.length) : err(listed.error);
