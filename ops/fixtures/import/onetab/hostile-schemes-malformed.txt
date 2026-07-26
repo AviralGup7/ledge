@@ -1,0 +1,9 @@
+javascript:alert(1) | Injected script scheme
+data:text/html,<h1>payload</h1> | Data url payload
+chrome://settings | Browser internals page
+ftp://ftp.example.net/legacy/file.zip | Legacy ftp scheme
+notaurl-at-all
+https://example.com/split 1 | Space inside the path breaks the url
+https://example.com/report/dup-4242 | Duplicate entry first
+https://example.com/report/dup-4242 | Duplicate entry second
+#fragment-only-reference

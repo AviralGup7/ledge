@@ -1,0 +1,38 @@
+[
+  {
+    "name": "Windows as object not array",
+    "created": "2026-03-02T09:15:00.000Z",
+    "generated": "2026-03-02T09:15:00.000Z",
+    "modified": "2026-03-02T10:20:00.000Z",
+    "windows": { "0": { "tabs": [] } }
+  },
+  "a session that is just a string",
+  {
+    "name": "Numeric url and null tabs",
+    "created": "2026-03-09T18:40:00.000Z",
+    "generated": "2026-03-09T18:40:00.000Z",
+    "modified": "2026-03-09T19:05:00.000Z",
+    "windows": [
+      {
+        "id": 0,
+        "tabs": [
+          {
+            "id": 201,
+            "index": 0,
+            "windowId": 0,
+            "url": 44042,
+            "title": "Url arrived as a number"
+          },
+          {
+            "id": 202,
+            "index": 1,
+            "windowId": 0,
+            "url": "https://example.com/guide/harbor-118",
+            "title": "Harbor signal guide"
+          }
+        ]
+      },
+      { "id": 1, "tabs": null }
+    ]
+  }
+]

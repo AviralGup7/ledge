@@ -1,0 +1,22 @@
+x[
+  {
+    "name": "Stray prefix before the array",
+    "created": "2026-05-11T07:30:00.000Z",
+    "generated": "2026-05-11T07:30:00.000Z",
+    "modified": "2026-05-11T07:45:00.000Z",
+    "windows": [
+      {
+        "id": 0,
+        "tabs": [
+          {
+            "id": 401,
+            "index": 0,
+            "windowId": 0,
+            "url": "https://example.net/spec/violet-88",
+            "title": "One clean tab behind a bad byte"
+          }
+        ]
+      }
+    ]
+  }
+]

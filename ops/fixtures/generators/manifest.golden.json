@@ -1,0 +1,42 @@
+{
+  "schemaV": 1,
+  "seed": 32337489,
+  "entries": {
+    "onetab:10000": {
+      "bytes": 783648,
+      "crc32": "1996c0f0"
+    },
+    "onetab:50000": {
+      "bytes": 3914738,
+      "crc32": "fc5ada6f"
+    },
+    "onetab:200000": {
+      "bytes": 15675030,
+      "crc32": "f5010a92"
+    },
+    "sessionbuddy:10000": {
+      "bytes": 5367339,
+      "crc32": "a605ae41"
+    },
+    "sessionbuddy:50000": {
+      "bytes": 26881372,
+      "crc32": "94bbad66"
+    },
+    "sessionbuddy:200000": {
+      "bytes": 107672390,
+      "crc32": "b1648004"
+    },
+    "netscape:10000": {
+      "bytes": 1282190,
+      "crc32": "f9559d3f"
+    },
+    "netscape:50000": {
+      "bytes": 6416555,
+      "crc32": "845849e6"
+    },
+    "netscape:200000": {
+      "bytes": 25655974,
+      "crc32": "4ce50faf"
+    }
+  }
+}

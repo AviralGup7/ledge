@@ -1,0 +1,27 @@
+[
+  {
+    "name": "Research ledger sweep",
+    "created": "2026-03-02T09:15:00.000Z",
+    "generated": "2026-03-02T09:15:00.000Z",
+    "modified": "2026-03-02T10:20:00.000Z",
+    "windows": [
+      {
+        "id": 0,
+        "top": 24,
+        "left": 32,
+        "width": 1440,
+        "height": 900,
+        "tabs": [
+          {
+            "id": 101,
+            "index": 0,
+            "windowId": 0,
+            "highlighted": true,
+            "active": true,
+            "pinned": false,
+            "status": "complete",
+            "incognito": false,
+            "audible": false,
+            "mutedInfo": { "muted": false },
+            "url": "https://example.com/guide/anchor-4812",
+            "title": "Ledger anchor notes from the fi

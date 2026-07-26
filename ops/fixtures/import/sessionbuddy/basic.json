@@ -1,0 +1,143 @@
+[
+  {
+    "name": "Research ledger sweep",
+    "created": "2026-03-02T09:15:00.000Z",
+    "generated": "2026-03-02T09:15:00.000Z",
+    "modified": "2026-03-02T10:20:00.000Z",
+    "windows": [
+      {
+        "id": 0,
+        "top": 24,
+        "left": 32,
+        "width": 1440,
+        "height": 900,
+        "tabs": [
+          {
+            "id": 101,
+            "index": 0,
+            "windowId": 0,
+            "highlighted": true,
+            "active": true,
+            "pinned": true,
+            "status": "complete",
+            "incognito": false,
+            "audible": false,
+            "mutedInfo": { "muted": false },
+            "url": "https://example.com/guide/anchor-4812",
+            "title": "Ledger anchor notes from the field",
+            "favIconUrl": "https://example.com/favicon.ico"
+          },
+          {
+            "id": 102,
+            "index": 1,
+            "windowId": 0,
+            "highlighted": false,
+            "active": false,
+            "pinned": false,
+            "status": "complete",
+            "incognito": false,
+            "audible": false,
+            "mutedInfo": { "muted": false },
+            "url": "https://www.example.org/notes/quartz-771",
+            "title": "Quartz meadow review"
+          },
+          {
+            "id": 103,
+            "index": 2,
+            "windowId": 0,
+            "highlighted": false,
+            "active": false,
+            "pinned": false,
+            "status": "complete",
+            "incognito": false,
+            "audible": false,
+            "mutedInfo": { "muted": false },
+            "url": "https://docs.example.net/reference/ember-2043",
+            "title": ""
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "top": 80,
+        "left": 120,
+        "width": 1280,
+        "height": 800,
+        "tabs": [
+          {
+            "id": 104,
+            "index": 0,
+            "windowId": 1,
+            "highlighted": false,
+            "active": false,
+            "pinned": false,
+            "status": "complete",
+            "incognito": false,
+            "audible": false,
+            "mutedInfo": { "muted": false },
+            "url": "https://example.com/archive/atlas-903",
+            "title": "Atlas cinder report"
+          },
+          {
+            "id": 105,
+            "index": 1,
+            "windowId": 1,
+            "highlighted": true,
+            "active": true,
+            "pinned": false,
+            "status": "complete",
+            "incognito": false,
+            "audible": false,
+            "mutedInfo": { "muted": false },
+            "url": "https://blog.example.com/journal/pollen-556",
+            "title": "Pollen summit journal"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "created": "2026-03-09T18:40:00.000Z",
+    "generated": "2026-03-09T18:40:00.000Z",
+    "modified": "2026-03-09T19:05:00.000Z",
+    "windows": [
+      {
+        "id": 2,
+        "top": 40,
+        "left": 60,
+        "width": 1366,
+        "height": 768,
+        "tabs": [
+          {
+            "id": 106,
+            "index": 0,
+            "windowId": 2,
+            "highlighted": true,
+            "active": true,
+            "pinned": false,
+            "status": "complete",
+            "incognito": false,
+            "audible": false,
+            "mutedInfo": { "muted": false },
+            "url": "https://example.org/gallery/ripple-3108",
+            "title": "Ripple tundra gallery"
+          },
+          {
+            "id": 107,
+            "index": 1,
+            "windowId": 2,
+            "highlighted": false,
+            "active": false,
+            "pinned": false,
+            "status": "complete",
+            "incognito": false,
+            "audible": false,
+            "mutedInfo": { "muted": false },
+            "url": "https://archive.example.net/spec/violet-88",
+            "title": "Violet onyx spec archive"
+          }
+        ]
+      }
+    ]
+  }
+]

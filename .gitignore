@@ -9,6 +9,10 @@ coverage/
 # E7-T02: perf run artifacts are CI-upload outputs, never source (baselines ARE committed).
 ops/perf/out/
 
+# E7-T01: synthetic corpora are generated on demand (determinism pinned by the
+# generator manifest golden); only the small committed corpus is source.
+ops/fixtures/generated/
+
 # secrets — never commit (S-05)
 .env
 .env.*

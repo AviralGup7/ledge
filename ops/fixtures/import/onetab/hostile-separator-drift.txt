@@ -1,0 +1,6 @@
+https://example.com/guide/harbor-118
+https://example.org/notes/meadow-2209 |
+| Orphan title with no url at all
+https://example.net/review/summit-67 | Summit title | with a pipe inside it
+plain text note that never was a url
+https://example.com/manual/falcon-8840|Tight pipe no spaces around it
