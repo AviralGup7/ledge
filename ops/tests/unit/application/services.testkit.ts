@@ -38,7 +38,12 @@ import { createV1ProjectionEngine } from '@/infrastructure/projections/index.js'
 import type { EventEnvelope } from '@/shared-kernel/events/index.js';
 import { createIdGenerator } from '@/shared-kernel/identity/index.js';
 import { err, ledgeError, ok, type LedgeError, type Result } from '@/shared-kernel/result/index.js';
-import { createServices, type AppServices, type UseCtx } from '@/application/usecases/index.js';
+import {
+  createServices,
+  type AppServices,
+  type ServiceDeps,
+  type UseCtx,
+} from '@/application/usecases/index.js';
 
 export { DEV_A, testId };
 
@@ -229,19 +234,26 @@ export const makeFakeSnapshots = (): FakeSnapshots => {
 
 // ─────────────────────────── fake ingest hub (C1 seam) ────────────────────
 
-export const makeFakeIngest = (): IngestHub =>
-  ({
-    firstRunIngest: (liveTabs: readonly TabInfo[]) =>
-      Promise.resolve(
+/** Stateful first-run flag (production hinges meta firstRunDone): the first crawl
+ *  applies; every later call reports the resend-safe idempotent skip. */
+export const makeFakeIngest = (): IngestHub => {
+  let done = false;
+  return {
+    firstRunIngest: (liveTabs: readonly TabInfo[]) => {
+      const first = !done;
+      done = true;
+      return Promise.resolve(
         ok({
           kind: 'first-run' as const,
-          applied: true,
-          idempotentSkip: false,
+          applied: first,
+          idempotentSkip: !first,
           missionsCreated: 0,
           tabsCaptured: liveTabs.length,
         }),
-      ),
-  }) as unknown as IngestHub;
+      );
+    },
+  } as unknown as IngestHub;
+};
 
 // ─────────────────────────── harness assembly ─────────────────────────────
 
@@ -303,7 +315,11 @@ export interface ServicesHarness {
 }
 
 export const makeServices = async (
-  opts: { readonly withIngest?: boolean | undefined } = {},
+  opts: {
+    readonly withIngest?: boolean | undefined;
+    readonly importer?: ServiceDeps['importer'];
+    readonly exporter?: ServiceDeps['exporter'];
+  } = {},
 ): Promise<ServicesHarness> => {
   const engine = await openEngine();
   const journal = createJournal(engine);
@@ -338,6 +354,8 @@ export const makeServices = async (
     deviceId: DEV_A,
     now,
     ...(opts.withIngest === true ? { ingest: makeFakeIngest() } : {}),
+    ...(opts.importer !== undefined ? { importer: opts.importer } : {}),
+    ...(opts.exporter !== undefined ? { exporter: opts.exporter } : {}),
   });
 
   let seedSeq = 0;
