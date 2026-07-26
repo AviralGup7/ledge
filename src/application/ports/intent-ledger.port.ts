@@ -10,6 +10,7 @@
 // {'intent-missing','intent-terminal-conflict','intent-id-reuse'} (JournalPort family
 // law); journal-side retry law keeps its own 'idempotency-key-reuse' for alien content.
 import type { Id } from '@/shared-kernel/identity/id.js';
+import type { StoreName, TxScope } from './storage-engine.port.js';
 import type { LedgeError, Result } from '@/shared-kernel/result/index.js';
 import type { EventEnvelope } from '@/shared-kernel/events/index.js';
 
@@ -44,6 +45,15 @@ export interface AcceptInput {
   readonly issuedAt: number;
   /** Durable acceptance event(s), caller-stamped (ParkIntentAccepted family). */
   readonly ackEvents: readonly EventEnvelope[];
+  /**
+   * E3-APP · §6.4 \"txn A, same\" law: acceptance may carry CALLER co-writes (the park
+   * flow's SnapshotTaken + session part rows) inside the SAME idb transaction as the
+   * ack events + intent row + cid map. Ordered AFTER the ledger's own hinge writes;
+   * any throw aborts everything (one fate). Dedupe replay skips it with the hinge —
+   * the durable original already contains it. Additive-optional (ADR-011 unchanged).
+   */
+  readonly extraStores?: readonly StoreName[] | undefined;
+  readonly hinge?: ((tx: TxScope) => Promise<void>) | undefined;
 }
 
 export interface AcceptOutcome {

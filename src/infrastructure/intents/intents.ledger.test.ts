@@ -3,6 +3,7 @@
 // hinge abort-totality (a poisoned batch takes the intent row down with it).
 import { describe, expect, it } from 'vitest';
 import type { IntentRecord } from '@/application/ports/intent-ledger.port.js';
+import { ledgeError } from '@/shared-kernel/result/index.js';
 import {
   abortedEnv,
   acceptInputOf,
@@ -85,6 +86,83 @@ describe('intents ledger acceptance (ADR-011 phase 1)', () => {
     if (!pending.ok) throw new Error('pending failed');
     expect(pending.value).toEqual([]);
     expect(await allEvents(h)).toEqual([]);
+    await h.engine.close();
+  });
+});
+
+// E3-APP · §6.4 "txn A, same" — caller co-writes (park snapshot part rows) ride the
+// acceptance txn: one fate, dedupe-safe, abort-total.
+describe('intents ledger caller hinge (E3-APP co-write law)', () => {
+  const sessionRow = (n: number) => ({
+    snapshotId: `snap-${String(n)}`,
+    partIndex: 0,
+    missionId: `m-${String(n)}`,
+    tabRecordIds: [],
+    groupStyles: [],
+    takenAt: 1,
+    trigger: 'park',
+  });
+
+  it('caller co-writes commit with the acceptance (one txn, one fate)', async () => {
+    const h = await makeLedger();
+    const input = acceptInputOf(1, 1);
+    const r = await h.ledger.accept({
+      ...input,
+      extraStores: ['sessions'],
+      hinge: async (tx) => {
+        await tx.table('sessions').put(sessionRow(1));
+      },
+    });
+    if (!r.ok) throw new Error(`accept failed: ${r.error.code}`);
+    expect(r.value.deduped).toBe(false);
+    const found = await h.engine.txn(['sessions'], 'readonly', (tx) =>
+      tx.table('sessions').get([`snap-1`, 0]),
+    );
+    if (!found.ok) throw new Error('sessions read failed');
+    expect(found.value?.['missionId']).toBe('m-1');
+    const row = await expectRow(h, input.intentId);
+    expect(row.state).toBe('intent');
+    await h.engine.close();
+  });
+
+  it('caller hinge throw ⇒ the acceptance aborts totally (no row, no events, no co-writes)', async () => {
+    const h = await makeLedger();
+    const input = acceptInputOf(1, 1);
+    const r = await h.ledger.accept({
+      ...input,
+      extraStores: ['sessions'],
+      hinge: async () => {
+        throw ledgeError('E_CAPABILITY', { fault: 'caller-hinge-poison' });
+      },
+    });
+    expect(r.ok).toBe(false);
+    const pending = await h.ledger.pending();
+    if (!pending.ok) throw new Error('pending failed');
+    expect(pending.value).toEqual([]);
+    expect(await allEvents(h)).toEqual([]);
+    const found = await h.engine.txn(['sessions'], 'readonly', (tx) =>
+      tx.table('sessions').toArray(),
+    );
+    if (!found.ok) throw new Error('sessions read failed');
+    expect(found.value).toEqual([]);
+    await h.engine.close();
+  });
+
+  it('duplicate accept by cid does NOT re-run the caller hinge (replay law)', async () => {
+    const h = await makeLedger();
+    const input = acceptInputOf(1, 1);
+    let hingeRuns = 0;
+    const withHinge = {
+      ...input,
+      hinge: async () => {
+        hingeRuns += 1;
+      },
+    };
+    await h.ledger.accept(withHinge);
+    const again = await h.ledger.accept({ ...withHinge });
+    if (!again.ok) throw new Error('duplicate accept failed');
+    expect(again.value.deduped).toBe(true);
+    expect(hingeRuns).toBe(1);
     await h.engine.close();
   });
 });

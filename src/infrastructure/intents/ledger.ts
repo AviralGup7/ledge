@@ -129,9 +129,14 @@ export function createIntentLedger(deps: IntentLedgerDeps): IntentLedgerPort {
         issuedAt: input.issuedAt,
         retryCount: 0,
       };
+      // E3-APP · §6.4 "txn A, same": caller co-writes (snapshot part rows) join the
+      // acceptance txn — caller extraStores merge into the scope, the caller hinge
+      // runs AFTER the ledger's own writes inside the shared hinge.
+      const callerStores = input.extraStores ?? [];
+      const callerHinge = input.hinge;
       const appended = await journal.appendHinged(input.ackEvents, {
         idempotencyKey: journalKey('accept', input.intentId),
-        extraStores: ['intents', 'meta'],
+        extraStores: [...callerStores, 'intents', 'meta'],
         hinge: async (tx) => {
           // Defensive id law: intentId is caller-minted-per-cid in hub policy; a taken
           // id under a different cid is a caller bug, never a silent replace.
@@ -147,6 +152,7 @@ export function createIntentLedger(deps: IntentLedgerDeps): IntentLedgerPort {
           const map = await readCidMap(tx);
           map[input.cid as string] = input.intentId as string;
           await tx.table<MetaRow>('meta').put({ key: META_INTENT_CID_MAP_KEY, value: map });
+          if (callerHinge !== undefined) await callerHinge(tx);
         },
       });
       if (!appended.ok) return appended;
