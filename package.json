@@ -40,12 +40,14 @@
     "test:chaos": "vitest run --project chaos",
     "test:chaos:evidence": "UPDATE_EVIDENCE=1 vitest run --project chaos ops/tests/chaos",
     "test:perf": "vitest run --project perf",
-    "test:perf:update": "PERF_UPDATE_BASELINE=1 vitest run --project perf"
+    "test:perf:update": "PERF_UPDATE_BASELINE=1 vitest run --project perf",
+    "verify:load": "node scripts/load-unpacked.mjs"
   },
   "dependencies": {
     "dexie": "^4.0.11"
   },
   "devDependencies": {
+    "@puppeteer/browsers": "3.0.6",
     "@types/chrome": "^0.0.300",
     "dependency-cruiser": "^16.10.0",
     "eslint": "^9.20.0",
@@ -53,6 +55,7 @@
     "fake-indexeddb": "^6",
     "fast-check": "^4.0.0",
     "prettier": "^3.5.0",
+    "puppeteer-core": "25.3.0",
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.24.0",
     "vitest": "^3.0.0",
