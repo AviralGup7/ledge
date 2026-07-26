@@ -43,6 +43,11 @@ import { createJournal } from '@/infrastructure/journal/index.js';
 import { createV1ProjectionEngine } from '@/infrastructure/projections/index.js';
 import { stampInstallMarker } from '@/infrastructure/recovery/marker/index.js';
 import { createSearchRankAdapter } from '@/infrastructure/search/index.js';
+import {
+  createEngineModelSource,
+  createExportersAdapter,
+} from '@/infrastructure/exporters/index.js';
+import { computeContractHash } from '@/application/contracts/index.js';
 import { createSnapshotsAdapter } from '@/infrastructure/snapshots/index.js';
 import { createDexieStorageEngine, type DexieEngineDeps } from '@/infrastructure/storage/index.js';
 import {
@@ -298,6 +303,16 @@ const buildRuntime = (
   // E5-T01 rank seam, composed once: services read it, the maintenance lane below
   // self-heals it. Idle-cheap until the first index build exists.
   const searchRank = deps.search ?? createSearchRankAdapter({ engine: storage, projections, now });
+  // E5-T03: the render pipeline is root-wired (model = projection snapshot via the
+  // engine-backed source; build provenance = contract hash; ADR-045 chunk-verify).
+  const exporter =
+    deps.exporter ??
+    createExportersAdapter({
+      source: createEngineModelSource(storage),
+      ids,
+      now,
+      build: computeContractHash(),
+    });
   const ledger = createIntentLedger({ engine: storage, journal });
   const services = createServices({
     engine: storage,
@@ -323,7 +338,7 @@ const buildRuntime = (
           }),
         }),
     ...(deps.importer !== undefined ? { importer: deps.importer } : {}),
-    ...(deps.exporter !== undefined ? { exporter: deps.exporter } : {}),
+    exporter,
     search: searchRank,
   });
   servicesRef = services;

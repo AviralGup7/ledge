@@ -102,6 +102,9 @@ export const BUDGETS = {
   /** EES §6 SearchRankPort row / roadmap M3 "Find anything": search query
    *  p95 ≤ 100ms @10k-tab corpus. Observation row until E8-T15 hardening. */
   searchQueryP95Ms: 100,
+  /** EES §6 ExportRendererPort bench / §12 exporters DoD: 100k-tab export
+   *  streams ≤ 60s worst. Observation row until E8-T15 hardening. */
+  exportRenderMs: 60_000,
 } as const;
 
 /**

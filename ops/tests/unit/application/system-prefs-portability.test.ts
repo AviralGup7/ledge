@@ -2,8 +2,21 @@
 // W16 chip-edit teaching, C19–C22 capability honesty, C25 derived-only purge).
 import { describe, expect, it } from 'vitest';
 import type { ImporterPort } from '@/application/ports/import-export.port.js';
-import { browserTabIdOf, liveTabPlan, makeServices, mustOk, testId } from './services.testkit.js';
+import { platformIds } from '@/shared-kernel/identity/index.js';
+import {
+  browserTabIdOf,
+  ledgeTabIdOf,
+  liveTabPlan,
+  makeServices,
+  mustOk,
+  testId,
+} from './services.testkit.js';
 import { ok } from '@/shared-kernel/result/index.js';
+import {
+  createEngineModelSource,
+  createExportersAdapter,
+  type ExportersAdapter,
+} from '@/infrastructure/exporters/index.js';
 
 const FAKE_IMPORTER: ImporterPort = {
   preview: () =>
@@ -256,5 +269,96 @@ describe('E3-APP portability — capability honesty + the R11 import-undo law', 
     expect(evs[0]?.type).toBe('ImportPreviewed');
     expect((await h.rows('missions')).length).toBe(0);
     expect((await h.rows('tabs')).length).toBe(0);
+  });
+});
+
+describe('E5-T03 export — the wired render pipeline rides the service', () => {
+  const NOW_X = 1_800_000_000_000;
+  const MISSION = testId(77_001);
+
+  /** Service harness with the REAL exporters adapter bound to the harness engine. */
+  const wiredWorld = async () => {
+    let adapter: ExportersAdapter | undefined;
+    const h = await makeServices({
+      exporterFactory: (engine) => {
+        adapter = createExportersAdapter({
+          source: createEngineModelSource(engine),
+          ids: platformIds,
+          now: () => NOW_X,
+          build: 'build-it-1',
+        });
+        return adapter;
+      },
+    });
+    await h.seed([
+      liveTabPlan(1),
+      liveTabPlan(2),
+      {
+        type: 'MissionFormed',
+        payload: {
+          missionId: MISSION,
+          name: 'Exportable',
+          namedBy: 'user',
+          tabIds: [ledgeTabIdOf(1), ledgeTabIdOf(2)],
+        },
+      },
+    ]);
+    const adapterOf = (): ExportersAdapter => {
+      if (adapter === undefined) throw new Error('adapter not composed');
+      return adapter;
+    };
+    return { h, adapterOf };
+  };
+
+  it('exportRequest renders + journals ExportCompleted with the plan seal', async () => {
+    const { h, adapterOf } = await wiredWorld();
+    const out = await mustOk(
+      h.services.portability.exportRequest(
+        { scope: { kind: 'all' }, formats: ['md', 'json'] },
+        h.ctxOf(31).ctx,
+      ),
+    );
+    const completed = (await h.events()).find((e) => e.type === 'ExportCompleted');
+    const payload = completed?.payload as {
+      exportId: string;
+      scope: string;
+      formats: string[];
+      manifestChecksum: string;
+    };
+    expect(payload.exportId).toBe(out.exportId);
+    expect(payload.scope).toBe('all');
+    expect(payload.formats).toEqual(['json', 'md']);
+    expect(payload.manifestChecksum).toMatch(/^[0-9a-f]{8}$/);
+    // The sealed artifact is fetchable and its manifest carries the same checksum.
+    const artifact = adapterOf().fetchArtifact(out.exportId)?.artifacts['json'];
+    expect(artifact?.manifest.manifestChecksum).toBe(payload.manifestChecksum);
+    const parsed = JSON.parse(artifact?.text ?? '') as { missions: { name: string }[] };
+    expect(parsed.missions.map((m) => m.name)).toEqual(['Exportable']);
+  });
+
+  it('mission-missing is a domain legality fault BEFORE any render happens', async () => {
+    const { h } = await wiredWorld();
+    const r = await h.services.portability.exportRequest(
+      { scope: { kind: 'mission', missionId: testId(77_099) }, formats: ['json'] },
+      h.ctxOf(32).ctx,
+    );
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.error.code).toBe('E_DOMAIN_LEGALITY');
+    expect(r.error.details?.['reason']).toBe('mission-missing');
+    // Fail-closed: nothing journaled — the audit feed never fabricates outcomes.
+    expect((await h.events()).some((e) => e.type === 'ExportCompleted')).toBe(false);
+  });
+
+  it('formats-empty rides the adapter legality fault through the service', async () => {
+    const { h } = await wiredWorld();
+    const r = await h.services.portability.exportRequest(
+      { scope: { kind: 'all' }, formats: [] },
+      h.ctxOf(33).ctx,
+    );
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.error.code).toBe('E_DOMAIN_LEGALITY');
+    expect((await h.events()).some((e) => e.type === 'ExportCompleted')).toBe(false);
   });
 });

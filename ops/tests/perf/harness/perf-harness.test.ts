@@ -52,6 +52,7 @@ const REQUIRED_ROWS = [
   'storage.idb.txn',
   'ingest.event.latency',
   'search.query',
+  'export.render',
 ] as const;
 
 const rowName = (r: ScenarioResult): string => (r.key.split('/')[1] ?? '').split('/')[0] ?? '';

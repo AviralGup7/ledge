@@ -321,6 +321,10 @@ export const makeServices = async (
     readonly onFrame?: ((frame: ViewDeltaFrame) => void) | undefined;
     readonly importer?: ServiceDeps['importer'];
     readonly exporter?: ServiceDeps['exporter'];
+    /** Late-bind factory (E5-T03): engine-derived deps (the exporters adapter's
+     *  model source reads the harness engine) cannot exist before makeServices
+     *  opens the store — the factory receives it during composition. */
+    readonly exporterFactory?: ((engine: StorageEnginePort) => ServiceDeps['exporter']) | undefined;
     readonly search?: ServiceDeps['search'];
   } = {},
 ): Promise<ServicesHarness> => {
@@ -361,7 +365,11 @@ export const makeServices = async (
     now,
     ...(opts.withIngest === true ? { ingest: makeFakeIngest() } : {}),
     ...(opts.importer !== undefined ? { importer: opts.importer } : {}),
-    ...(opts.exporter !== undefined ? { exporter: opts.exporter } : {}),
+    ...(opts.exporter !== undefined
+      ? { exporter: opts.exporter }
+      : opts.exporterFactory !== undefined
+        ? { exporter: opts.exporterFactory(engine) }
+        : {}),
     ...(opts.search !== undefined ? { search: opts.search } : {}),
   });
 
