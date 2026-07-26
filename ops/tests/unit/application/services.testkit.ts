@@ -321,6 +321,7 @@ export const makeServices = async (
     readonly onFrame?: ((frame: ViewDeltaFrame) => void) | undefined;
     readonly importer?: ServiceDeps['importer'];
     readonly exporter?: ServiceDeps['exporter'];
+    readonly importBytesStage?: ServiceDeps['importBytesStage'];
     /** Late-bind factory (E5-T03): engine-derived deps (the exporters adapter's
      *  model source reads the harness engine) cannot exist before makeServices
      *  opens the store — the factory receives it during composition. */
@@ -365,6 +366,7 @@ export const makeServices = async (
     now,
     ...(opts.withIngest === true ? { ingest: makeFakeIngest() } : {}),
     ...(opts.importer !== undefined ? { importer: opts.importer } : {}),
+    ...(opts.importBytesStage !== undefined ? { importBytesStage: opts.importBytesStage } : {}),
     ...(opts.exporter !== undefined
       ? { exporter: opts.exporter }
       : opts.exporterFactory !== undefined

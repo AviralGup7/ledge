@@ -5,6 +5,7 @@
 // stream lanes (import-ready/export-ready) render only their own affordances;
 // undo keyboard contract; boot/rejoin/cleanup semantics.
 import { describe, expect, it } from 'vitest';
+import { ok } from '@/shared-kernel/result/index.js';
 import { copyOf } from '@/surfaces/components/copy/copy.js';
 import { mountQuietPage, type Mounted } from '@/surfaces/quiet-page/quiet.js';
 import { FakeDocument, asDocument, fireKey, mustQuery, type FakeElement } from './fake-dom.js';
@@ -51,8 +52,26 @@ interface QuietHarness {
   readonly mounted: Mounted;
   readonly wake: () => void;
   readonly answers: Map<string, unknown>;
+  readonly staged: { name: string; size: number; bytes: Uint8Array }[];
   readonly unmount: () => void;
 }
+
+/** The staged-file flow rides a duck-typed File (no DOM File in the unit lane). */
+const hatchFile = (elTarget: unknown, name: string, text: string): void => {
+  const bytes = new TextEncoder().encode(text);
+  const duckFile = {
+    name,
+    size: bytes.length,
+    arrayBuffer: () =>
+      Promise.resolve(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)),
+  };
+  (elTarget as { files?: unknown }).files = { 0: duckFile, length: 1 };
+  (elTarget as { dispatchEvent: (ev: Event) => void }).dispatchEvent(
+    new (class {
+      readonly type = 'change';
+    })() as unknown as Event,
+  );
+};
 
 const mount = (): QuietHarness => {
   const doc = new FakeDocument();
@@ -67,6 +86,7 @@ const mount = (): QuietHarness => {
     ['GetHealth', { storage: 'ok', journalHead: 41 }],
   ]);
   let wakeListener: (() => void) | undefined;
+  const staged: { name: string; size: number; bytes: Uint8Array }[] = [];
   const mounted = mountQuietPage(asDocument(doc), {
     transport: fake.transport,
     entropy: createTestEntropy(),
@@ -74,12 +94,19 @@ const mount = (): QuietHarness => {
       wakeListener = listener;
       return () => {};
     },
+    importBytesStage: {
+      put: (input: { name: string; size: number; bytes: Uint8Array }) => {
+        staged.push(input);
+        return Promise.resolve(ok({ staged: true as const }));
+      },
+    },
   });
   return {
     doc,
     fake,
     mounted,
     answers,
+    staged,
     wake: () => wakeListener?.(),
     unmount: () => mounted.unmount(),
   };
@@ -527,42 +554,119 @@ describe('E4 quiet · settings', () => {
 });
 
 describe('E4 quiet · import & export', () => {
-  it('preview request rides ImportPreviewRequest with file metadata', async () => {
+  it('picking a file stages its bytes, then previews with file metadata (E5-T06)', async () => {
     const h = mount();
     await navTo(h, 'import-export');
     const c = content(h.doc);
-    mustQuery(c, 'input[data-field="file-name"]').value = 'bookmarks.html';
-    mustQuery(c, 'input[data-field="file-size"]').value = '2048';
-    mustQuery(c, '[data-action="import-preview"]').click();
+    const text = 'https://example.com/a | A\nhttps://example.com/b | B';
+    const size = new TextEncoder().encode(text).length;
+    hatchFile(mustQuery(c, 'input[data-field="import-file"]'), 'tabs.txt', text);
     await flush();
+    // The shelf got the exact bytes BEFORE the wire saw any metadata.
+    expect(h.staged.length).toBe(1);
+    expect(h.staged[0]?.name).toBe('tabs.txt');
+    expect(h.staged[0]?.size).toBe(size);
+    expect(new TextDecoder().decode(h.staged[0]?.bytes)).toBe(text);
     expect(h.fake.lastOf('ImportPreviewRequest').payload).toEqual({
-      fileMeta: { name: 'bookmarks.html', size: 2048 },
+      fileMeta: { name: 'tabs.txt', size },
     });
     h.unmount();
   });
 
-  it('ImportReady on the section renders the commit lane; commit rides ImportCommit', async () => {
+  it('a staged file that the SW refuses renders the typed corrupt-abort card on the panel', async () => {
     const h = mount();
     await navTo(h, 'import-export');
-    h.fake.emitStream('ImportReady', { previewId: '01HF7YEXEZY000000000000000' });
+    const c = content(h.doc);
+    hatchFile(mustQuery(c, 'input[data-field="import-file"]'), 'odd.txt', 'lorem ipsum');
+    await flush();
+    h.fake.fail(h.fake.lastOf('ImportPreviewRequest').cid, {
+      code: 'E_FORMAT_UNKNOWN',
+      messageKey: 'msg.error.format',
+    });
+    await flush();
+    const block = mustQuery(h.doc.body, '[data-block="import"]');
+    const errCard = mustQuery(block, '[data-state="error"]');
+    expect(errCard.textContent).toContain(copyOf('msg.import.unsupported'));
+    h.unmount();
+  });
+
+  it('ImportReady on the section renders the census lane; commit rides ImportCommit', async () => {
+    const h = mount();
+    await navTo(h, 'import-export');
+    h.fake.emitStream('ImportReady', {
+      previewId: '01HF7YEXEZY000000000000000',
+      modelSummary: 'onetab:m2:t7:r1:d2',
+    });
     await flush();
     const lane = mustQuery(h.doc.body, '[data-lane="import-ready"]');
+    // W15: counts + detected structure before any commit happens.
+    expect(mustQuery(lane, '[data-line="import-detected"]').textContent).toBe(
+      copyOf('msg.import.detected', { parser: 'onetab', missions: 2, tabs: 7 }),
+    );
+    expect(mustQuery(lane, '[data-line="import-extras"]').textContent).toBe(
+      copyOf('msg.import.extras', { dupes: 2, rejects: 1 }),
+    );
+    expect(mustQuery(lane, '[data-line="import-rejects"]').textContent).toBe(
+      copyOf('msg.import.rejects-note', { rejects: 1 }),
+    );
     mustQuery(lane, '[data-action="import-commit"]').click();
     await flush();
     const sent = h.fake.lastOf('ImportCommit');
     expect(sent.payload).toEqual({ previewId: '01HF7YEXEZY000000000000000', dedupeMode: 'skip' });
-    h.fake.apply(sent.cid, { imported: 10, dupes: 3 });
+    h.fake.apply(sent.cid, { imported: 10, dupes: 3, rejects: 1 });
     await flush();
-    expect(mustQuery(h.doc.body, '[data-live-region]').textContent).toBe(
+    // The receipt line keeps the imported dialog; the live region carries the
+    // rejects note (announcements replace, the receipt persists).
+    expect(mustQuery(h.doc.body, '[data-line="import-receipt"]').textContent).toBe(
       copyOf('msg.dialog.imported', { imported: 10, dupes: 3 }),
     );
+    expect(mustQuery(h.doc.body, '[data-live-region]').textContent).toBe(
+      copyOf('msg.import.rejects-note', { rejects: 1 }),
+    );
+    // Commit consumed the flow: the lane is gone.
+    expect(h.doc.body.querySelector('[data-lane="import-ready"]')).toBeNull();
+    h.unmount();
+  });
+
+  it('dedupe-mode choice rides the commit radio (import-anyway), cancel clears the flow', async () => {
+    const h = mount();
+    await navTo(h, 'import-export');
+    h.fake.emitStream('ImportReady', {
+      previewId: '01HF7YEXEZY000000000000001',
+      modelSummary: 'sessionbuddy:m1:t4:r0:d1',
+    });
+    await flush();
+    const lane = mustQuery(h.doc.body, '[data-lane="import-ready"]');
+    (mustQuery(lane, '[data-field="dedupe-anyway"]') as unknown as { checked: boolean }).checked =
+      true;
+    mustQuery(lane, '[data-action="import-commit"]').click();
+    await flush();
+    expect(h.fake.lastOf('ImportCommit').payload).toEqual({
+      previewId: '01HF7YEXEZY000000000000001',
+      dedupeMode: 'import-anyway',
+    });
+    h.fake.apply(h.fake.lastOf('ImportCommit').cid, { imported: 5, dupes: 1, rejects: 0 });
+    await flush();
+
+    h.fake.emitStream('ImportReady', {
+      previewId: '01HF7YEXEZY000000000000002',
+      modelSummary: 'netscape:m3:t9:r0:d0',
+    });
+    await flush();
+    mustQuery(h.doc.body, '[data-action="import-cancel"]').click();
+    await flush();
+    expect(h.doc.body.querySelector('[data-lane="import-ready"]')).toBeNull();
+    expect(h.fake.countOf('ImportCommit')).toBe(1); // cancel sent nothing to the wire
     h.unmount();
   });
 
   it('ImportReady off the section stays silent (no cross-section lanes)', async () => {
     const h = mount();
     await answerAll(h); // sitting on library
-    h.fake.emitStream('ImportReady', { previewId: '01HF7YF56EB000000000000000' });
+    h.fake.emitStream('ImportReady', {
+      previewId: '01HF7YF56EB000000000000000',
+      modelSummary: 'onetab:m1:t2:r0:d0',
+    });
     await flush();
     expect(h.doc.body.querySelector('[data-lane="import-ready"]')).toBeNull();
     h.unmount();

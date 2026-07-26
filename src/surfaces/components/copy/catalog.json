@@ -148,6 +148,19 @@
       "updated": "Chrome updated. Everything is safe.",
       "crashed": "Chrome closed unexpectedly. Everything is safe — {asOf}."
     },
+    "import": {
+      "choose": "Choose a file\u2026",
+      "detected": "Detected {parser} \u2014 {missions} missions, {tabs} tabs.",
+      "extras": "{dupes} duplicates inside the file; {rejects} rows can't be read.",
+      "rejects-note": "{rejects} rows can't be read; the good rows import normally.",
+      "rejects-fatal": "Most of that file can't be read, so nothing was imported.",
+      "unsupported": "Ledge reads OneTab, Session Buddy, and Netscape bookmark files.",
+      "guard": "That file is too large to import here.",
+      "dedupe-skip": "Skip duplicates",
+      "dedupe-anyway": "Import duplicates anyway",
+      "cancel": "Choose a different file",
+      "staged": "{name} \u2014 reading it locally; nothing leaves your device."
+    },
     "dialog": {
       "imported": "{imported} tabs imported; {dupes} were already here.",
       "previewed": "{imported} tabs in this file; {dupes} already kept.",

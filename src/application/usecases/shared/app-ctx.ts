@@ -2,6 +2,11 @@
 // are the PUBLIC application layer (one service per use case, per the E3 mission):
 // UI/surfaces talk to them through handlers; they never know journal/ledger/storage
 // exist. Deps flow through the composition root (roots wire ports; tests wire fakes).
+import type {
+  ExporterPort,
+  ImportBytesStagePort,
+  ImporterPort,
+} from '@/application/ports/import-export.port.js';
 import type { IntentLedgerPort } from '@/application/ports/intent-ledger.port.js';
 import type { JournalPort } from '@/application/ports/journal.port.js';
 import type { ProjectionEnginePort } from '@/application/ports/projection-engine.port.js';
@@ -9,7 +14,6 @@ import type { SnapshotsPort } from '@/application/ports/snapshots.port.js';
 import type { StorageEnginePort } from '@/application/ports/storage-engine.port.js';
 import type { TabsPort } from '@/application/ports/tabs.port.js';
 import type { WindowsPort } from '@/application/ports/windows.port.js';
-import type { ImporterPort, ExporterPort } from '@/application/ports/import-export.port.js';
 import type { SearchRankPort } from '@/application/ports/search.port.js';
 import type { CancelToken } from '@/application/hub/dispatch/cancellation.js';
 import type { ProgressEmitter } from '@/application/hub/dispatch/progress.js';
@@ -35,6 +39,9 @@ export interface ServiceDeps {
   /** Portability seams (E5 importers/exporters families; undefined ⇒ E_CAPABILITY). */
   readonly importer?: ImporterPort | undefined;
   readonly exporter?: ExporterPort | undefined;
+  /** E5-T06 import-bytes shelf (v1 workroom-contract frame; undefined ⇒ the wire's
+   *  bytesRef-less requests refuse E_FORMAT_UNKNOWN 'import-bytes' as before). */
+  readonly importBytesStage?: ImportBytesStagePort | undefined;
   /** Reflex Search rank seam (E5-T01; undefined ⇒ §6.6 fallback sweep, honestly flagged). */
   readonly search?: SearchRankPort | undefined;
 }

@@ -160,8 +160,13 @@ export const createOutbox = (deps: OutboxDeps): Outbox => {
   const appliedResult = (e: Extract<AppEvent, { readonly type: 'command-applied' }>): void => {
     emit('CommandApplied', { cid: e.cid, result: e.result });
     if (e.command === 'ImportPreviewRequest') {
-      const previewId = (e.result as { previewId?: unknown } | null)?.previewId;
-      if (isId(previewId)) emit('ImportReady', { previewId });
+      const result = e.result as Record<string, unknown> | null;
+      const previewId = result?.['previewId'];
+      const modelSummary = result?.['modelSummary'];
+      // The service value carries the census (ImportPreviewed journalled upstream);
+      // the amended row delivers it to every surface, not just the requester.
+      if (isId(previewId) && typeof modelSummary === 'string')
+        emit('ImportReady', { previewId, modelSummary });
     }
     if (e.command === 'ExportRequest') {
       // ExportReady's frozen fields (fetchURL/manifestId/chunkChecksums) are the E5

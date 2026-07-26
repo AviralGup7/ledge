@@ -386,7 +386,10 @@ export const MESSAGE_REGISTRY: Readonly<Record<string, MessageSpec>> = {
     kind: 'stream',
     family: 'stream',
     availability: 'v1',
-    payload: { previewId: 'id' },
+    // E5-T06 (user-ruled amendment, docs/adr-notes/e5-import-preview-ui.md):
+    // modelSummary rides so the panel can show W15's "counts, detected structure"
+    // — the shape key's declared surface purpose. Additive; older surfaces strip.
+    payload: { previewId: 'id', modelSummary: 'string' },
   },
   ExportProgress: {
     kind: 'stream',

@@ -28,3 +28,9 @@ export {
   type ImportersAdapter,
   type ImportBytesTransport,
 } from './importers.adapter.js';
+export {
+  createImportBytesStage,
+  IMPORT_STAGE_DB,
+  IMPORT_STAGE_TTL_MS,
+  type ImportBytesStageDeps,
+} from './bytes-stage.js';

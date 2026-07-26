@@ -4,6 +4,7 @@
 // store mirrors §3.5 deltas mechanically. No business logic, no storage, no
 // chrome APIs — presentation + wire only.
 import type { SenderContext } from '@/application/contracts/index.js';
+import type { ImportStageWriter } from '../components/session/import-stage.js';
 import { copyOf } from '../components/copy/copy.js';
 import { clearChildren, el, inputValue } from '../components/dom/dom.js';
 import { bindKeys } from '../components/dom/keyboard.js';
@@ -50,6 +51,9 @@ export interface QuietDeps {
   readonly entropy: CidEntropy;
   readonly onWake?: ((listener: () => void) => () => void) | undefined;
   readonly contractHash?: string | undefined;
+  /** E5-T06 bytes shelf writer (composed by the page root; undefined ⇒ previews
+   *  answer the adapter's honest 'import-bytes' refusal). */
+  readonly importBytesStage?: ImportStageWriter | undefined;
 }
 
 export interface Mounted {
@@ -80,6 +84,10 @@ const SECTIONS: readonly { readonly key: SectionKey; readonly copyKey: string }[
 ];
 
 const asString = (v: unknown, fallback = ''): string => (typeof v === 'string' ? v : fallback);
+const asCount = (v: string | undefined): number => {
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+};
 const asNumber = (v: unknown, fallback = 0): number => (typeof v === 'number' ? v : fallback);
 const asRecords = (v: unknown): readonly Record<string, unknown>[] =>
   Array.isArray(v)
@@ -175,14 +183,19 @@ export const mountQuietPage = (doc: Document, deps: QuietDeps): Mounted => {
     name: string,
     payload: unknown,
     after?: (value: unknown) => void,
+    onError?: (error: WireError) => void,
   ): OperationHandle => {
     const op = client.command(name, payload);
     renderPending();
     void op.terminal.then((t) => {
       renderPending();
       if (!t.ok) {
+        if (onError !== undefined) {
+          onError(t.error);
+          return;
+        }
         showError(t.error, () => {
-          void runCommand(name, payload, after);
+          void runCommand(name, payload, after, onError);
         });
         return;
       }
@@ -692,49 +705,262 @@ export const mountQuietPage = (doc: Document, deps: QuietDeps): Mounted => {
   };
 
   // ── import / export ──────────────────────────────────────────────────────────
+  // E5-T06 · the import panel (roadmap row: counts/dupes/rejects display with
+  // commit flow; corrupt-abort path). Bytes stage through the IDB shelf (the
+  // wire carries fileMeta only — frozen C20); the preview census rides the
+  // amended ImportReady row's modelSummary shape key, whose surface-facing
+  // purpose this panel is. One preview flow at a time by UI law.
+  const IMPORT_ACCEPT = '.txt,.json,.html,.htm';
+  const MODEL_SUMMARY = /^([a-z-]+):m(\d+):t(\d+):r(\d+):d(\d+)$/;
+
+  interface PreviewCensus {
+    readonly parser: string;
+    readonly missions: number;
+    readonly tabs: number;
+    readonly rejects: number;
+    readonly dupes: number;
+    readonly summary: string;
+  }
+
+  /** The single pending preview (UI law: one import flow at a time; the SW stash
+   *  TTL-sweeps an abandoned one, the panel keeps its place across nav switches). */
+  let pendingPreview:
+    { readonly previewId: string; readonly census: PreviewCensus | undefined } | undefined;
+
+  const censusOf = (summary: string): PreviewCensus | undefined => {
+    const m = MODEL_SUMMARY.exec(summary);
+    if (m === null) return undefined;
+    return {
+      parser: m[1] ?? '',
+      missions: asCount(m[2]),
+      tabs: asCount(m[3]),
+      rejects: asCount(m[4]),
+      dupes: asCount(m[5]),
+      summary,
+    };
+  };
+
+  /** Typed import failures → panel copy (W15: name the supported formats). */
+  const importWireError = (error: WireError): WireError => {
+    const map = (messageKey: string, recoveryKey: string): WireError => ({
+      ...error,
+      messageKey,
+      recoveryKey,
+    });
+    if (error.code === 'E_QUOTA') return map('msg.error.quota', 'msg.recover.space');
+    if (error.code === 'E_CORRUPT_STORE') return map('msg.error.store', 'msg.recover.restart');
+    if (error.code === 'E_FILE_GUARD') return map('msg.import.guard', 'msg.recover.file-other');
+    if (error.code === 'E_PARSE_REJECTS')
+      return map('msg.import.rejects-fatal', 'msg.recover.file-other');
+    if (error.code === 'E_FORMAT_UNKNOWN')
+      return map('msg.import.unsupported', 'msg.recover.file-path');
+    return map('msg.error.file', 'msg.recover.file-path');
+  };
+
+  type FileInput = { files?: { 0?: File } | null; click: () => void } & HTMLElement;
+  type RadioInput = { checked?: boolean } & HTMLElement;
+
   const renderPortability = (): void => {
     clearChildren(content);
     content.appendChild(
       el(doc, 'h2', { cls: 'section-title', text: copyOf('msg.section.import-export') }),
     );
     const importBlock = el(doc, 'div', { cls: 'port-block', attrs: { 'data-block': 'import' } });
+
+    const renderImportError = (error: WireError): void => {
+      const mapped = importWireError(error);
+      clearChildren(importBlock);
+      importBlock.appendChild(
+        renderStateBlock(doc, {
+          kind: 'error',
+          copyKey: mapped.messageKey ?? 'msg.error.file',
+          error: mapped,
+          retry: { onRetry: () => renderPortability() },
+        }),
+      );
+      live.say(copyOf(mapped.messageKey ?? 'msg.error.file'));
+    };
+
+    const stageAndPreview = async (file: File): Promise<void> => {
+      const meta = { name: file.name, size: file.size };
+      if (deps.importBytesStage !== undefined) {
+        const staged = await deps.importBytesStage.put({
+          name: file.name,
+          size: file.size,
+          bytes: new Uint8Array(await file.arrayBuffer()),
+        });
+        if (!staged.ok) {
+          renderImportError({ code: staged.error.code, details: staged.error.details });
+          return;
+        }
+      }
+      importBlock.appendChild(
+        el(doc, 'p', {
+          cls: 'state-line',
+          text: copyOf('msg.import.staged', { name: file.name }),
+          attrs: { 'data-line': 'import-staged' },
+        }),
+      );
+      live.say(copyOf('msg.hint.import-wait'));
+      runCommand('ImportPreviewRequest', { fileMeta: meta }, undefined, (error) =>
+        renderImportError(error),
+      );
+    };
+
     const fileRow = el(doc, 'div', { cls: 'port-row' });
-    const nameField = el(doc, 'input', {
-      cls: 'port-file-name',
+    const fileInput = el(doc, 'input', {
+      cls: 'port-file',
       attrs: {
-        type: 'text',
-        'data-field': 'file-name',
-        placeholder: copyOf('msg.action.import'),
-        'aria-label': copyOf('msg.action.import'),
+        type: 'file',
+        accept: IMPORT_ACCEPT,
+        'data-field': 'import-file',
+        'aria-label': copyOf('msg.import.choose'),
       },
-    });
-    const sizeField = el(doc, 'input', {
-      cls: 'port-file-size',
-      attrs: {
-        type: 'number',
-        min: '0',
-        'data-field': 'file-size',
-        'aria-label': copyOf('msg.action.import'),
+      on: {
+        change: () => {
+          const file = (fileInput as unknown as FileInput).files?.[0];
+          if (file === undefined) return;
+          void stageAndPreview(file);
+        },
       },
-    });
-    fileRow.appendChild(nameField);
-    fileRow.appendChild(sizeField);
+    }) as unknown as FileInput;
+    fileRow.appendChild(fileInput);
     fileRow.appendChild(
       actionButton(doc, {
         copyKey: 'msg.action.import',
         action: 'import-preview',
-        onClick: () => {
-          const name = inputValue(nameField).trim();
-          const size = Number(inputValue(sizeField));
-          if (name.length === 0 || !Number.isFinite(size)) return;
-          importBlock.appendChild(
-            el(doc, 'p', { cls: 'state-line', text: copyOf('msg.hint.import-wait') }),
-          );
-          runCommand('ImportPreviewRequest', { fileMeta: { name, size } });
-        },
+        primary: true,
+        onClick: () => fileInput.click(),
       }),
     );
     importBlock.appendChild(fileRow);
+
+    /** Preview lane (counts/dupes/rejects + dedupe choice + commit). Rendered from
+     *  pendingPreview so a nav switch away and back keeps the flow's place. */
+    const previewLane = (previewId: string, census: PreviewCensus | undefined): HTMLElement => {
+      const lane = el(doc, 'div', {
+        cls: 'import-ready-lane',
+        attrs: { 'data-lane': 'import-ready' },
+      });
+      if (census === undefined) {
+        lane.appendChild(
+          el(doc, 'p', { cls: 'state-line', text: copyOf('msg.hint.import-ready') }),
+        );
+      } else {
+        lane.appendChild(
+          el(doc, 'p', {
+            cls: 'import-detected',
+            text: copyOf('msg.import.detected', {
+              parser: census.parser,
+              missions: census.missions,
+              tabs: census.tabs,
+            }),
+            attrs: { 'data-line': 'import-detected' },
+          }),
+        );
+        lane.appendChild(
+          el(doc, 'p', {
+            cls: 'import-extras',
+            text: copyOf('msg.import.extras', { dupes: census.dupes, rejects: census.rejects }),
+            attrs: { 'data-line': 'import-extras' },
+          }),
+        );
+        if (census.rejects > 0)
+          lane.appendChild(
+            el(doc, 'p', {
+              cls: 'import-rejects-note',
+              text: copyOf('msg.import.rejects-note', { rejects: census.rejects }),
+              attrs: { 'data-line': 'import-rejects' },
+            }),
+          );
+      }
+      const skipInput = el(doc, 'input', {
+        attrs: { type: 'radio', name: 'import-dedupe', value: 'skip', 'data-field': 'dedupe-skip' },
+      }) as unknown as RadioInput;
+      skipInput.checked = true;
+      const anywayInput = el(doc, 'input', {
+        attrs: {
+          type: 'radio',
+          name: 'import-dedupe',
+          value: 'import-anyway',
+          'data-field': 'dedupe-anyway',
+        },
+      }) as unknown as RadioInput;
+      lane.appendChild(
+        el(doc, 'div', {
+          cls: 'import-dedupe',
+          attrs: { role: 'radiogroup', 'data-field': 'dedupe' },
+          children: [
+            el(doc, 'label', {
+              cls: 'import-dedupe-option',
+              children: [skipInput, el(doc, 'span', { text: copyOf('msg.import.dedupe-skip') })],
+            }),
+            el(doc, 'label', {
+              cls: 'import-dedupe-option',
+              children: [
+                anywayInput,
+                el(doc, 'span', { text: copyOf('msg.import.dedupe-anyway') }),
+              ],
+            }),
+          ],
+        }),
+      );
+      lane.appendChild(
+        actionButton(doc, {
+          copyKey: 'msg.action.import-commit',
+          action: 'import-commit',
+          primary: true,
+          onClick: () => {
+            const dedupeMode =
+              anywayInput.checked === true ? ('import-anyway' as const) : ('skip' as const);
+            runCommand(
+              'ImportCommit',
+              { previewId, dedupeMode },
+              (value) => {
+                const r = asRecord(value);
+                const imported = asNumber(r['imported']);
+                const dupes = asNumber(r['dupes']);
+                const rejects = asNumber(r['rejects']);
+                pendingPreview = undefined;
+                // The commit's outcome lands as an honest receipt line (calm
+                // success, plain numbers) — announcements ride the live region.
+                clearChildren(importBlock);
+                importBlock.appendChild(
+                  el(doc, 'p', {
+                    cls: 'import-receipt',
+                    text: copyOf('msg.dialog.imported', { imported, dupes }),
+                    attrs: { 'data-line': 'import-receipt', role: 'status' },
+                  }),
+                );
+                live.say(copyOf('msg.dialog.imported', { imported, dupes }));
+                if (rejects > 0) live.say(copyOf('msg.import.rejects-note', { rejects }));
+              },
+              (error) => {
+                // A stale/unknown preview is committed-proof the card lied: drop
+                // the flow and show the typed failure.
+                pendingPreview = undefined;
+                renderImportError(error);
+              },
+            );
+          },
+        }),
+      );
+      lane.appendChild(
+        actionButton(doc, {
+          copyKey: 'msg.import.cancel',
+          action: 'import-cancel',
+          onClick: () => {
+            pendingPreview = undefined;
+            renderPortability();
+          },
+        }),
+      );
+      return lane;
+    };
+
+    if (pendingPreview !== undefined)
+      importBlock.appendChild(previewLane(pendingPreview.previewId, pendingPreview.census));
+
     content.appendChild(importBlock);
     const exportBlock = el(doc, 'div', { cls: 'port-block', attrs: { 'data-block': 'export' } });
     exportBlock.appendChild(
@@ -973,32 +1199,12 @@ export const mountQuietPage = (doc: Document, deps: QuietDeps): Mounted => {
     ImportReady: (payload) => {
       const p = asRecord(payload);
       const previewId = asString(p['previewId']);
+      const modelSummary = asString(p['modelSummary']);
+      // Keep the preview's place even off-section (the flow resumes when the
+      // user returns; the SW TTL-sweeps an abandoned one honestly).
+      pendingPreview = { previewId, census: censusOf(modelSummary) };
       if (currentSection !== 'import-export') return;
-      streamsSlot.appendChild(
-        el(doc, 'div', {
-          cls: 'import-ready-lane',
-          attrs: { 'data-lane': 'import-ready' },
-          children: [
-            el(doc, 'p', { cls: 'state-line', text: copyOf('msg.hint.import-ready') }),
-            actionButton(doc, {
-              copyKey: 'msg.action.import-commit',
-              action: 'import-commit',
-              primary: true,
-              onClick: () => {
-                runCommand('ImportCommit', { previewId, dedupeMode: 'skip' }, (value) => {
-                  const r = asRecord(value);
-                  live.say(
-                    copyOf('msg.dialog.imported', {
-                      imported: asNumber(r['imported']),
-                      dupes: asNumber(r['dupes']),
-                    }),
-                  );
-                });
-              },
-            }),
-          ],
-        }),
-      );
+      renderPortability();
       live.say(copyOf('msg.hint.import-ready'));
     },
     ExportReady: (payload) => {

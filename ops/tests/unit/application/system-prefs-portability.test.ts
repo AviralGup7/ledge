@@ -11,7 +11,8 @@ import {
   mustOk,
   testId,
 } from './services.testkit.js';
-import { ok } from '@/shared-kernel/result/index.js';
+import type { ServiceDeps } from '@/application/usecases/index.js';
+import { err, ledgeError, ok } from '@/shared-kernel/result/index.js';
 import {
   createEngineModelSource,
   createExportersAdapter,
@@ -496,5 +497,75 @@ describe('E5-T05 import — the wired two-phase pipeline rides the service', () 
       ).batchManifestRef.missions.map((m) => m.missionId),
     );
     expect(ids[1]).not.toEqual(ids[0]);
+  });
+});
+
+describe('E5-T06 import — the bytes shelf hinge (C20 workroom-contract frame)', () => {
+  const NOW_S = 1_800_000_000_000;
+  const SHELF_TEXT = 'https://shelf-one.test/a | A\nhttps://shelf-two.test/b | B';
+  const SHELF_BYTES = new TextEncoder().encode(SHELF_TEXT);
+
+  type ShelfMode = 'match' | 'empty' | 'fault';
+  const shelfRig = async (mode: ShelfMode) => {
+    const importer = createImportersAdapter({ ids: platformIds, now: () => NOW_S });
+    const claims: { name: string; size: number }[] = [];
+    const importBytesStage: ServiceDeps['importBytesStage'] & object = {
+      put: () => Promise.resolve(ok({ staged: true as const })),
+      takeMatching: (meta: { name: string; size: number }) => {
+        claims.push(meta);
+        if (mode === 'fault')
+          return Promise.resolve(err(ledgeError('E_CORRUPT_STORE', { what: 'stage-read' })));
+        return Promise.resolve(
+          ok(
+            mode === 'match'
+              ? { name: meta.name, size: meta.size, stagedAt: NOW_S, bytes: SHELF_BYTES }
+              : undefined,
+          ),
+        );
+      },
+      sweep: () => Promise.resolve(ok({ swept: 0 })),
+    };
+    const h = await makeServices({ importer, importBytesStage });
+    return { h, claims };
+  };
+  const previewMeta = { name: 'tabs.txt', size: SHELF_BYTES.length };
+
+  it('a bytesRef-less preview resolves the shelf and parses for real (end-to-end)', async () => {
+    const { h, claims } = await shelfRig('match');
+    const out = await mustOk(
+      h.services.portability.importPreview({ fileMeta: previewMeta }, h.ctxOf(51).ctx),
+    );
+    expect(claims).toEqual([previewMeta]); // the hinge claimed exactly the wire meta
+    expect(out.modelSummary).toBe('onetab:m1:t2:r0:d0');
+    const evs = await h.events();
+    const previewed = evs.find((e) => e.type === 'ImportPreviewed');
+    expect((previewed?.payload as { modelSummary: string }).modelSummary).toBe(
+      'onetab:m1:t2:r0:d0',
+    );
+  });
+
+  it('an empty shelf keeps the honest import-bytes refusal (nothing fabricated, nothing journalled)', async () => {
+    const { h } = await shelfRig('empty');
+    const r = await h.services.portability.importPreview(
+      { fileMeta: previewMeta },
+      h.ctxOf(52).ctx,
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.error.code).toBe('E_FORMAT_UNKNOWN');
+      expect(r.error.details?.['what']).toBe('import-bytes');
+    }
+    expect((await h.events()).length).toBe(0);
+  });
+
+  it('a shelf fault propagates typed (the hinge never invents bytes)', async () => {
+    const { h } = await shelfRig('fault');
+    const r = await h.services.portability.importPreview(
+      { fileMeta: previewMeta },
+      h.ctxOf(53).ctx,
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error.code).toBe('E_CORRUPT_STORE');
+    expect((await h.events()).length).toBe(0);
   });
 });

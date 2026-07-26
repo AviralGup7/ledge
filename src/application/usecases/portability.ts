@@ -19,6 +19,9 @@ const unwired = (family: string): LedgeError =>
   ledgeError('E_CAPABILITY', { operation: `${PORT_OP}:${family}`, fault: 'port-not-wired' });
 
 export interface PortabilityService {
+  // The return carries modelSummary past the wire response row ({previewId}):
+  // the outbox lifts it into ImportReady (E5-T06 amended row; tolerated-extras
+  // law strips it from any re-emitted envelope).
   importPreview(
     input: {
       readonly fileMeta: { readonly name: string; readonly size: number };
@@ -26,7 +29,7 @@ export interface PortabilityService {
       readonly bytesRef?: unknown;
     },
     ctx: UseCtx,
-  ): Promise<Result<{ readonly previewId: string }, LedgeError>>;
+  ): Promise<Result<{ readonly previewId: string; readonly modelSummary: string }, LedgeError>>;
   importCommit(
     input: { readonly previewId: string; readonly dedupeMode: 'skip' | 'import-anyway' },
     ctx: UseCtx,
@@ -57,10 +60,20 @@ export const createPortabilityService = (edge: ServiceEdge): PortabilityService 
     importPreview: async (input, ctx) => {
       ctx.token.throwIfCancelled();
       if (deps.importer === undefined) return err(unwired('ImportPreviewRequest'));
+      // E5-T06 bytes hinge: the frozen wire carries fileMeta only (C20), so a
+      // bytesRef-less request resolves its bytes from the staged shelf (the v1
+      // workroom-contract frame). No shelf wired ⇒ the adapter's honest
+      // 'import-bytes' refusal stands.
+      let bytesRef = input.bytesRef;
+      if (bytesRef === undefined && deps.importBytesStage !== undefined) {
+        const staged = await deps.importBytesStage.takeMatching(input.fileMeta);
+        if (!staged.ok) return err(staged.error);
+        if (staged.value !== undefined) bytesRef = { kind: 'bytes', bytes: staged.value.bytes };
+      }
       const model = await deps.importer.preview({
         fileMeta: input.fileMeta,
         ...(input.parserHint !== undefined ? { parserHint: input.parserHint } : {}),
-        bytesRef: input.bytesRef ?? null,
+        bytesRef: bytesRef ?? null,
       });
       if (!model.ok) return err(model.error);
       // ImportPreviewed rides the journal (transient-surface consumer; audit lineage).
@@ -75,7 +88,7 @@ export const createPortabilityService = (edge: ServiceEdge): PortabilityService 
       });
       if (!committed.ok) return err(committed.error);
       ctx.progress({ stage: 2, ref: model.value.previewId });
-      return ok({ previewId: model.value.previewId });
+      return ok({ previewId: model.value.previewId, modelSummary: model.value.modelSummary });
     },
 
     importCommit: async (input, ctx) => {

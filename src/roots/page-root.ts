@@ -5,6 +5,13 @@
 // as and the hash-agreed hello material for the hub channel (§3.1, ADR-010).
 import { computeContractHash, makeHello } from '@/application/contracts/index.js';
 import type { Hello, SenderContext } from '@/application/contracts/index.js';
+import type { ImportBytesStagePort } from '@/application/ports/import-export.port.js';
+import { createImportBytesStage } from '@/infrastructure/importers/index.js';
+import { platformNow } from '@/shared-kernel/identity/index.js';
+
+/** Page-side IDB with the same no-crash degradation as the SW root. */
+const stageIdb = (): IDBFactory | undefined =>
+  typeof indexedDB === 'undefined' ? undefined : indexedDB;
 
 const QUIET_CONTEXT: SenderContext = 'quiet';
 
@@ -85,6 +92,9 @@ export interface QuietAppDeps {
   readonly entropy?: CidEntropy | undefined;
   readonly onWake?: ((listener: () => void) => () => void) | undefined;
   readonly contractHash?: string | undefined;
+  /** E5-T06 bytes shelf writer (default: the IDB stage over the page's own IDB
+   *  factory; tests inject an in-memory fake through surface deps). */
+  readonly importBytesStage?: ImportBytesStagePort | undefined;
 }
 
 /** Unmount handle + the E1 identity graph, composed in one bootstrap. */
@@ -95,10 +105,17 @@ export interface QuietApp {
 
 export function bootstrapQuietPageApp(doc: Document, deps: QuietAppDeps = {}): QuietApp {
   const graph = bootstrapQuietPage();
+  const stageFactory = stageIdb();
+  const importBytesStage =
+    deps.importBytesStage ??
+    (stageFactory !== undefined
+      ? createImportBytesStage({ idb: stageFactory, now: platformNow })
+      : undefined);
   const surfaceDeps: QuietDeps = {
     transport: deps.transport ?? composeQuietTransport(),
     entropy: deps.entropy ?? composeQuietEntropy(),
     onWake: deps.onWake ?? composeQuietWake(doc),
+    ...(importBytesStage !== undefined ? { importBytesStage } : {}),
     ...(deps.contractHash !== undefined ? { contractHash: deps.contractHash } : {}),
   };
   return { graph, mounted: mountQuietPage(doc, surfaceDeps) };

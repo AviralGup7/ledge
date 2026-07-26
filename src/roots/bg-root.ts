@@ -17,7 +17,11 @@ import {
   type Outbox,
   type WireStreamMessage,
 } from '@/application/hub/outbox/index.js';
-import type { ExporterPort, ImporterPort } from '@/application/ports/import-export.port.js';
+import type {
+  ExporterPort,
+  ImportBytesStagePort,
+  ImporterPort,
+} from '@/application/ports/import-export.port.js';
 import type { SearchRankPort } from '@/application/ports/search.port.js';
 import type { JournalPort } from '@/application/ports/journal.port.js';
 import { CONTRACT_V } from '@/application/contracts/envelope.js';
@@ -48,6 +52,7 @@ import {
   createExportersAdapter,
 } from '@/infrastructure/exporters/index.js';
 import { createImportersAdapter } from '@/infrastructure/importers/index.js';
+import { createImportBytesStage } from '@/infrastructure/importers/index.js';
 import { computeContractHash } from '@/application/contracts/index.js';
 import { createSnapshotsAdapter } from '@/infrastructure/snapshots/index.js';
 import { createDexieStorageEngine, type DexieEngineDeps } from '@/infrastructure/storage/index.js';
@@ -148,6 +153,9 @@ export interface BackgroundRuntimeDeps {
   /** E5 portability families — unwired in v1 ⇒ services answer honest E_CAPABILITY. */
   readonly importer?: ImporterPort | undefined;
   readonly exporter?: ExporterPort | undefined;
+  /** E5-T06 import-bytes shelf (default: the IDB stage over the injected/platform
+   *  factory; test override point like every other port seam). */
+  readonly importBytesStage?: ImportBytesStagePort | undefined;
   /** E5-T01 rank seam (test override point; default = the live index adapter). */
   readonly search?: SearchRankPort | undefined;
   /** §3.5 transport seam; default is the guarded chrome.runtime broadcast (silent
@@ -275,6 +283,9 @@ const buildRuntime = (
   journal: JournalPort,
   booted: BackgroundBoot,
   deps: BackgroundRuntimeDeps,
+  /** Graph-level IDB factory for the E5-T06 bytes shelf (ambient in the SW,
+   *  fake-indexeddb in tests; undefined ⇒ shelf stays unwired, honest refusals). */
+  stageIdb?: IDBFactory | undefined,
 ): BackgroundRuntime => {
   const ids = deps.ids ?? platformIds;
   const now = deps.now ?? platformNow;
@@ -317,6 +328,12 @@ const buildRuntime = (
   // E5-T05: the importer family is root-wired (pure parsers + preview stash;
   // frozen C20/C21 contracts; ADR-044 two-phase law).
   const importer = deps.importer ?? createImportersAdapter({ ids, now });
+  // E5-T06: the bytes shelf (v1 workroom-contract frame) rides the graph-level
+  // IDB factory — the ambient global may not exist in test hosts, so the shelf
+  // degrades to an unwired seam (import-bytes refusal) rather than a boot crash.
+  const importBytesStage =
+    deps.importBytesStage ??
+    (stageIdb !== undefined ? createImportBytesStage({ idb: stageIdb, now }) : undefined);
   const ledger = createIntentLedger({ engine: storage, journal });
   const services = createServices({
     engine: storage,
@@ -343,6 +360,7 @@ const buildRuntime = (
         }),
     importer,
     exporter,
+    ...(importBytesStage !== undefined ? { importBytesStage } : {}),
     search: searchRank,
   });
   servicesRef = services;
@@ -414,7 +432,15 @@ export function composeBackgroundGraph(deps: BackgroundGraphDeps = {}): Backgrou
   const runtime = boot.then((booted): Result<BackgroundRuntime, LedgeError> => {
     if (!booted.ok) return err(booted.error);
     try {
-      return ok(buildRuntime(storage, journal, booted.value, deps.runtime ?? {}));
+      return ok(
+        buildRuntime(
+          storage,
+          journal,
+          booted.value,
+          deps.runtime ?? {},
+          deps.idb?.indexedDB ?? (typeof indexedDB === 'undefined' ? undefined : indexedDB),
+        ),
+      );
     } catch (cause) {
       return err(ledgeError('E_CORRUPT_STORE', { what: 'runtime-compose', cause: String(cause) }));
     }

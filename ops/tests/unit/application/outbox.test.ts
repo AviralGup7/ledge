@@ -78,12 +78,18 @@ describe('E3-APP outbox — wire-shape proof at the ONLY publish point', () => {
       type: 'command-applied',
       cid: testId(70_010),
       command: 'ImportPreviewRequest',
-      result: { previewId: testId(70_011) },
+      result: { previewId: testId(70_011), modelSummary: 'onetab:m1:t3:r0:d1' },
     });
     await flush();
     const names = h.names();
     expect(names).toContain('CommandApplied');
     expect(names).toContain('ImportReady');
+    // E5-T06 amended row: the census rides with the preview id.
+    const ready = h.published.find((m) => m.name === 'ImportReady');
+    expect(ready?.payload).toEqual({
+      previewId: testId(70_011),
+      modelSummary: 'onetab:m1:t3:r0:d1',
+    });
     expect(names).toContain('HeartbeatUpdate');
     // R10: the heartbeat computation is post-Applied — publish order proves it.
     expect(names.indexOf('CommandApplied')).toBeLessThan(names.lastIndexOf('HeartbeatUpdate'));
