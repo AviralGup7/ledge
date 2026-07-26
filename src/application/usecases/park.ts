@@ -120,12 +120,20 @@ export const createParkService = (edge: ServiceEdge): ParkService => {
     return ok({ kind: 'form', missionId: deps.ids.nextId(), name });
   };
 
-  /** The whole two-phase act for one resolved scope. */
+  /**
+   * The whole two-phase act for one resolved scope.
+   * `sweepDiscriminator`: ParkAll fans out into per-window sweeps, each its OWN
+   * ledger intent (each does a browser close of its own). The parent command's cid
+   * owns the wire terminal (dispatcher law); sweeping children must NOT collide the
+   * ledger's cid dedupe map — the discriminator keeps (cid, sweep) unique while the
+   * parent cid stays the audit ancestor in kind/scope.
+   */
   const parkScope = async (
     kind: string,
     scope: readonly ScopeTab[],
     groupStyles: readonly GroupStyle[],
     ctx: UseCtx,
+    sweepDiscriminator?: number | undefined,
   ): Promise<Result<ParkOutcome, LedgeError>> => {
     ctx.token.throwIfCancelled();
     if (scope.length === 0)
@@ -196,7 +204,9 @@ export const createParkService = (edge: ServiceEdge): ParkService => {
       const ackEvents = stamp(ackPlans);
       const a = await deps.ledger.accept({
         intentId: intentId as Id,
-        cid: ctx.cid as Id,
+        cid: (sweepDiscriminator === undefined
+          ? ctx.cid
+          : `${ctx.cid}-s${String(sweepDiscriminator)}`) as Id,
         kind,
         scope: scopeRecord,
         issuedAt: now,
@@ -218,6 +228,14 @@ export const createParkService = (edge: ServiceEdge): ParkService => {
       return ok({ value: undefined, committed: ackEvents });
     });
     if (!accepted.ok) return err(accepted.error);
+    // REGRESSION LOCK (found by park.test.ts §6.4 law): the ack batch is a FOREIGN
+    // (ledger) append — withStampLock stamps + persists but returns before any view
+    // drive. Skipping this apply leaves SnapshotTaken/MissionFormed/ParkIntentAccepted
+    // durable-but-unprojected, and the completion batch's TabAssigned materializes the
+    // forward-tolerance provisional mission row (state 'live'), masking the skip
+    // entirely. ack ⇒ durable ⇒ views is one law, per phase:
+    const ackApplied = await appender.applyProjections(accepted.value.committed);
+    if (!ackApplied.ok) return err(ackApplied.error);
 
     // 4) §3.5: CommandAck accepted-pending rides BEFORE the browser mutation.
     ctx.notifyPending(intentId);
@@ -384,7 +402,7 @@ export const createParkService = (edge: ServiceEdge): ParkService => {
           current: index + 1,
           total: byWindow.size,
         });
-        const outcome = await parkScope('ParkAll', members, [], ctx);
+        const outcome = await parkScope('ParkAll', members, [], ctx, index);
         if (!outcome.ok) return err(outcome.error);
         keptCount += outcome.value.keptCount;
         index += 1;

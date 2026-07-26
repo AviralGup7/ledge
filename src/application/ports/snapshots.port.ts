@@ -49,6 +49,8 @@ export interface SnapshotBuild {
     readonly tabRecordRefs: readonly string[];
     readonly groupStyles: readonly GroupStyle[];
     readonly takenAt: number;
+    /** §4 additive-optional; builders always emit it (sessions rows materialize it). */
+    readonly trigger: SessionPartRow['trigger'];
   };
   readonly parts: readonly SessionPartRow[];
 }

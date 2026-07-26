@@ -6,13 +6,13 @@
 // — they are served by a disjoint internal registry parity-checked against the
 // code-declared catalog below, and wire ∩ internal = ∅.
 import { describe, expect, it } from 'vitest';
-import { MESSAGE_REGISTRY } from '../contracts/message.registry.js';
+import { MESSAGE_REGISTRY } from '@/application/contracts/message.registry.js';
 import {
   INTERNAL_COMMANDS,
   INTERNAL_QUERIES,
   WIRE_COMMANDS,
   WIRE_QUERIES,
-} from './handlers.js';
+} from '@/application/usecases/handlers.js';
 
 const v1Names = (kind: 'command' | 'query'): readonly string[] =>
   Object.entries(MESSAGE_REGISTRY)
@@ -82,9 +82,7 @@ describe('E3-APP parity law — internal registries (Tier-2; never on the wire)'
   });
 
   it('internal queries ⇔ declared catalog', () => {
-    expect(names(INTERNAL_QUERIES).slice().sort()).toEqual(
-      INTERNAL_QUERY_CATALOG.slice().sort(),
-    );
+    expect(names(INTERNAL_QUERIES).slice().sort()).toEqual(INTERNAL_QUERY_CATALOG.slice().sort());
   });
 
   it('wire ∩ internal = ∅ (no internal name ever leaks onto the wire)', () => {
@@ -104,9 +102,7 @@ describe('E3-APP parity law — lanes and retry classes (§2.6/§3.3)', () => {
   it('neverAutoRetry classes match the §3.3 notes exactly', () => {
     const wire = WIRE_COMMANDS.filter((r) => r.neverAutoRetry === true).map((r) => r.name);
     expect(wire.slice().sort()).toEqual(NEVER_AUTO_RETRY_WIRE.slice().sort());
-    const internal = INTERNAL_COMMANDS.filter((r) => r.neverAutoRetry === true).map(
-      (r) => r.name,
-    );
+    const internal = INTERNAL_COMMANDS.filter((r) => r.neverAutoRetry === true).map((r) => r.name);
     expect(internal).toEqual(['Redo']);
   });
 
