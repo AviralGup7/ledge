@@ -7,7 +7,7 @@
       "name": "overlay+guardian",
       "glob": "(overlay|guardian)",
       "maxGzipKB": 80,
-      "required": false
+      "required": true
     },
     {
       "name": "importers exporters",

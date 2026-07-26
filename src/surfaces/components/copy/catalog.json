@@ -2,19 +2,163 @@
   "msg": {
     "heartbeat": {
       "safe": "{count} tabs safe",
-      "recovered": "recovered after browser restart"
+      "recovered": "recovered after browser restart",
+      "quiet": "Nothing open. Everything is kept."
     },
     "empty": {
       "strip": "Nothing open. Everything is kept.",
       "archive": "Your future library. Park something and it will be here.",
-      "search": "Nothing kept matches. Showing open tabs and recently closed."
+      "search": "Nothing kept matches. Showing open tabs and recently closed.",
+      "library": "No missions yet. Start one, or park a tab and it lives here.",
+      "closed": "Nothing recently closed.",
+      "trash": "The Trash is empty.",
+      "activity": "Nothing yet today.",
+      "history": "Nothing in the timeline yet.",
+      "detail": "This mission holds no tabs.",
+      "topics": "No topics yet.",
+      "results": "Nothing to show here.",
+      "settings": "No settings changed yet."
+    },
+    "state": {
+      "loading": "Loading…",
+      "pending": "Confirming…",
+      "stale": "Refreshing…",
+      "resync": "Catching up with the background…",
+      "sent": "Sent.",
+      "open": "Open",
+      "kept": "Kept",
+      "parked": "Kept",
+      "archived": "Archived",
+      "trash": "Trash",
+      "live": "Open",
+      "concluded": "Concluded",
+      "fallback": "Keyword results"
+    },
+    "count": {
+      "tabs": "{count} tabs",
+      "missions": "{count} missions",
+      "kept": "{count} kept"
+    },
+    "action": {
+      "put-back": "Put everything back",
+      "park-tab": "Park tab",
+      "park-group": "Park group",
+      "park-window": "Park window",
+      "park-all": "Park everything",
+      "start-mission": "Start a mission",
+      "first-run": "Bring my open tabs in",
+      "resume": "Resume",
+      "rename": "Rename",
+      "archive": "Archive",
+      "conclude": "Conclude",
+      "delete": "Move to Trash",
+      "restore": "Restore",
+      "empty-trash": "Empty the Trash",
+      "undo": "Undo",
+      "search": "Search",
+      "open": "Open",
+      "save": "Save",
+      "close": "Close",
+      "cancel": "Cancel",
+      "confirm": "Confirm",
+      "merge": "Merge",
+      "split": "Split to a new mission",
+      "teach": "Correct topic",
+      "import": "Import a file",
+      "import-commit": "Import these missions",
+      "export": "Export everything",
+      "scan": "Scan now",
+      "repair": "Repair the views",
+      "diagnostics": "Export diagnostics",
+      "favorite": "Favorite",
+      "pin": "Pin",
+      "refresh": "Refresh",
+      "details": "Details"
+    },
+    "undo": {
+      "renamed": "Name restored.",
+      "imported": "Import undone.",
+      "moved": "Move undone.",
+      "merged": "Merge undone.",
+      "split": "Split undone.",
+      "unarchived": "Back from the Archive.",
+      "restored": "Restored.",
+      "trashed-tab": "Tab restored.",
+      "trashed-mission": "Mission restored.",
+      "done": "Undone.",
+      "empty": "Nothing to undo."
+    },
+    "hint": {
+      "search": "Type to search open, kept and closed tabs.",
+      "first-run": "Ledge can keep your currently open tabs now.",
+      "name-optional": "Optional, you can rename it later.",
+      "import-wait": "The file is looked at locally; nothing leaves your device.",
+      "import-ready": "Preview is ready.",
+      "undo-global": "Undo the last change.",
+      "confirm-delete": "This can be undone. Confirm to move it to the Trash.",
+      "confirm-purge": "Deleting from the Trash is permanent. Confirm to delete.",
+      "rescue": "A place to check the archive's health and repair views.",
+      "topics": "Correct a topic and Ledge learns from it.",
+      "history": "What changed, latest first."
+    },
+    "note": {
+      "fallback": "Keyword results while deeper search warms up.",
+      "already-open": "Already open.",
+      "redacted": "Kept private on this device.",
+      "resync-needed": "The display caught up after a gap; nothing was lost.",
+      "boot": "The background is starting.",
+      "offline": "The background is asleep; it wakes when you act."
+    },
+    "aria": {
+      "nav": "Sections",
+      "missions": "Missions",
+      "tabs": "Open tabs",
+      "results": "Results",
+      "palette": "Quick search",
+      "heartbeat": "Kept status",
+      "pending": "In progress",
+      "actions": "Actions",
+      "list": "List",
+      "close": "Close",
+      "input": "Input"
+    },
+    "section": {
+      "library": "Library",
+      "archive": "Archive",
+      "closed": "Recently Closed",
+      "trash": "Trash",
+      "activity": "Today",
+      "history": "History",
+      "search": "Search",
+      "settings": "Settings",
+      "rescue": "Rescue",
+      "import-export": "Import & Export",
+      "open-now": "Open now",
+      "missions": "Missions",
+      "detail": "Mission"
+    },
+    "setting": {
+      "retention": "Days kept in the Trash",
+      "bulk-threshold": "Ask before deleting more than",
+      "undo-cap": "Changes Ledge can undo",
+      "park-window": "Slow down Park everything (ms)",
+      "heartbeat-window": "Heartbeat window (ms)",
+      "closed-retention": "Days kept in Recently Closed"
     },
     "recovery": {
       "updated": "Chrome updated. Everything is safe.",
       "crashed": "Chrome closed unexpectedly. Everything is safe — {asOf}."
     },
-    "action": {
-      "put-back": "Put everything back"
+    "dialog": {
+      "imported": "{imported} tabs imported; {dupes} were already here.",
+      "previewed": "{imported} tabs in this file; {dupes} already kept.",
+      "export-ready": "Your export is ready.",
+      "scan-done": "Scan finished.",
+      "repair-done": "Repair finished.",
+      "diagnostics-done": "Diagnostics are ready.",
+      "settings-saved": "Saved.",
+      "topic-saved": "Topic corrected.",
+      "first-run-done": "{missions} missions around {tabs} tabs."
     },
     "error": {
       "capability": "Ledge needs a browser capability that isn't available here.",

@@ -398,7 +398,32 @@ export function composeBackgroundGraph(deps: BackgroundGraphDeps = {}): Backgrou
  * the rest of the crash-marker lifecycle + boot reconcile (runBootSequence)
  * wires here when the recovery graph lands (ledger/projections composition).
  */
+/**
+ * E4 · Surface channel: the ONLY inbound wire path from extension pages
+ * (ADR-007 sync listener; §2.6 dispatch is the single mutation entry). Any
+ * runtime message from a Ledge page is validated + dispatched against the
+ * booted runtime; the synchronous dispatch ANSWER (ack/ignored/rejected) is
+ * the sendMessage response, and terminals/streams ride the §3.5 broadcast.
+ * A dead boot answers rejected-with-error — surfaces render the calm boot
+ * card, never a silent hang (totality: every send gets exactly one response).
+ */
+export function composeSurfaceChannel(graph: BackgroundGraph): void {
+  chrome.runtime.onMessage.addListener((raw, _sender, sendResponse) => {
+    void (async (): Promise<void> => {
+      const booted = await graph.runtime;
+      if (!booted.ok) {
+        sendResponse({ outcome: 'rejected', error: booted.error });
+        return;
+      }
+      sendResponse(booted.value.dispatch(raw, 'zone0'));
+    })();
+    return true; // async sendResponse (MV3)
+  });
+}
+
 export function bootstrapBackground(): BackgroundGraph {
+  const channel = composeBackgroundGraph();
+  composeSurfaceChannel(channel);
   const storageArea = createChromeStorageAreaAdapter();
   chrome.runtime.onInstalled.addListener((details) => {
     // E2-T07 · EES-R16: every install/update/chrome_update leaves a durable
@@ -416,5 +441,5 @@ export function bootstrapBackground(): BackgroundGraph {
       Date.now(),
     );
   });
-  return composeBackgroundGraph();
+  return channel;
 }
