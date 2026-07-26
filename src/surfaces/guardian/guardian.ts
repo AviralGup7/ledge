@@ -553,21 +553,16 @@ export const mountGuardian = (doc: Document, deps: GuardianDeps): Mounted => {
     RecoveryAvailable: (payload) => {
       const p = payload as Record<string, unknown>;
       const severity = asString(p['severity']);
+      // §14.4 (E6-T01 realignment): the CARD venue is the quiet tab and only on
+      // loss-risk — the guardian strip renders the calm heartbeat state for both
+      // severities: a subdued chip for clean-abnormal, a card-marked line when a
+      // loss-risk card awaits on the quiet page.
       clearChildren(recoverySlot);
       recoverySlot.appendChild(
         el(doc, 'div', {
-          cls: 'recovery-card',
+          cls: severity === 'clean-abnormal' ? 'recovery-chip' : 'recovery-card',
           attrs: { 'data-card': 'recovery', 'data-severity': severity, role: 'status' },
-          children: [
-            el(doc, 'p', {
-              cls: 'state-line',
-              text: copyOf(
-                severity === 'clean-abnormal' ? 'msg.recovery.updated' : 'msg.recovery.crashed',
-                { asOf: asString(p['asOf']) },
-              ),
-            }),
-            el(doc, 'p', { cls: 'state-recovery', text: copyOf('msg.heartbeat.recovered') }),
-          ],
+          children: [el(doc, 'p', { cls: 'state-line', text: copyOf('msg.heartbeat.recovered') })],
         }),
       );
     },

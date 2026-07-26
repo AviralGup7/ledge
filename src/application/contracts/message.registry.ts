@@ -234,6 +234,23 @@ export const MESSAGE_REGISTRY: Readonly<Record<string, MessageSpec>> = {
     payload: { 'includeAddresses?': 'boolean' },
     response: { bundleId: 'id' },
   },
+  RestoreBootSession: {
+    kind: 'command',
+    family: 'command',
+    availability: 'v1',
+    // E6-T01 (user-ruled amendment, docs/adr-notes/e6-recovery-w7.md): W7's
+    // "Put everything back → Resume intents per mission" (Blueprint §5.9) rides
+    // ONE command — authority-free surfaces cannot enumerate affected missions,
+    // so the service expands per-mission restores server-side. Additive; older
+    // surfaces simply never send it. disclosure entries are STABLE TOKENS from
+    // the report's receipts (never display copy — the catalog renders them).
+    payload: { bootReportId: 'id' },
+    response: {
+      missionsRestored: 'int',
+      tabsRestored: 'int',
+      disclosure: { array: 'string' },
+    },
+  },
   NudgeDismiss: {
     kind: 'command',
     family: 'command',
@@ -325,6 +342,18 @@ export const MESSAGE_REGISTRY: Readonly<Record<string, MessageSpec>> = {
     availability: 'v1',
     payload: { 'windowId?': 'int' },
     // Live tab inventory: shape belongs to the TabsPort contract (EES §6).
+  },
+  GetBootReport: {
+    kind: 'query',
+    family: 'query',
+    availability: 'v1',
+    // E6-T01 (user-ruled amendment, docs/adr-notes/e6-recovery-w7.md): the W7
+    // report fetch pairing the frozen RecoveryAvailable stream (§3.5 rows carry
+    // no display copy — the surface reads the report, the catalog renders it).
+    // Id-less call = the latest incident slot (the auto-opened quiet tab can
+    // land after the fire-and-forget stream); an explicit id serves card-on-
+    // demand reads. Response: the BootReport DTO (EES §2.13 schema v1) or null.
+    payload: { 'bootReportId?': 'id' },
   },
 
   // ── §3.5 Streams (SW → Surface) ─────────────────────────────────────────────────

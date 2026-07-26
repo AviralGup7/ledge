@@ -470,7 +470,7 @@ describe('E4 guardian · streams', () => {
     unmount();
   });
 
-  it('RecoveryAvailable renders the recovery card with severity-driven copy', async () => {
+  it('RecoveryAvailable renders the §14.4 strip: chip for clean-abnormal, card-line for loss-risk', async () => {
     const { doc, fake, unmount } = mount();
     await settleBoot(fake);
     fake.emitStream('RecoveryAvailable', {
@@ -478,17 +478,19 @@ describe('E4 guardian · streams', () => {
       severity: 'clean-abnormal',
     });
     await flush();
-    const card = mustQuery(doc.body, '[data-card="recovery"]');
-    expect(card.getAttribute('data-severity')).toBe('clean-abnormal');
-    expect(card.textContent).toContain(copyOf('msg.recovery.updated'));
+    const chip = mustQuery(doc.body, '[data-card="recovery"]');
+    expect(chip.getAttribute('data-severity')).toBe('clean-abnormal');
+    expect(chip.getAttribute('class')).toContain('recovery-chip');
+    expect(chip.textContent).toContain(copyOf('msg.heartbeat.recovered'));
     fake.emitStream('RecoveryAvailable', {
       bootReportId: '01HF7YC0NB200R0R0000000000',
       severity: 'loss-risk',
     });
     await flush();
-    expect(mustQuery(doc.body, '[data-card="recovery"]').textContent).toContain(
-      'Everything is safe',
-    );
+    const cardLine = mustQuery(doc.body, '[data-card="recovery"]');
+    expect(cardLine.getAttribute('data-severity')).toBe('loss-risk');
+    expect(cardLine.getAttribute('class')).toContain('recovery-card');
+    expect(cardLine.textContent).toContain(copyOf('msg.heartbeat.recovered'));
     unmount();
   });
 

@@ -73,7 +73,8 @@
       "favorite": "Favorite",
       "pin": "Pin",
       "refresh": "Refresh",
-      "details": "Details"
+      "details": "Details",
+      "review-first": "Review first"
     },
     "undo": {
       "archived": "Back from the Archive.",
@@ -146,11 +147,19 @@
     },
     "recovery": {
       "updated": "Chrome updated. Everything is safe.",
-      "crashed": "Chrome closed unexpectedly. Everything is safe — {asOf}."
+      "crashed": "Chrome closed unexpectedly. Everything is safe — {asOf}.",
+      "scope": "{tabs} tabs · {missions} missions",
+      "restored": "Everything is back where it was.",
+      "restored-partial": "Back in place. A few tabs had nothing to restore — nothing is lost.",
+      "note-truncate": "Some of the newest changes couldn't be confirmed — the journal rests at the last fully safe point.",
+      "note-left-open": "{count} items were left exactly where they were rather than risk them.",
+      "note-deferred": "{count} background actions kept their place for next time.",
+      "note-crosscheck": "Chrome's own Recently Closed list wasn't checked this time.",
+      "note-marker-gap": "One signal was unclear; the journal stayed the only source of truth."
     },
     "import": {
-      "choose": "Choose a file\u2026",
-      "detected": "Detected {parser} \u2014 {missions} missions, {tabs} tabs.",
+      "choose": "Choose a file…",
+      "detected": "Detected {parser} — {missions} missions, {tabs} tabs.",
       "extras": "{dupes} duplicates inside the file; {rejects} rows can't be read.",
       "rejects-note": "{rejects} rows can't be read; the good rows import normally.",
       "rejects-fatal": "Most of that file can't be read, so nothing was imported.",
@@ -159,7 +168,7 @@
       "dedupe-skip": "Skip duplicates",
       "dedupe-anyway": "Import duplicates anyway",
       "cancel": "Choose a different file",
-      "staged": "{name} \u2014 reading it locally; nothing leaves your device."
+      "staged": "{name} — reading it locally; nothing leaves your device."
     },
     "dialog": {
       "imported": "{imported} tabs imported; {dupes} were already here.",
@@ -210,6 +219,11 @@
       "space": "Free some space and everything continues; nothing kept is lost.",
       "wait": "Wait a few seconds; nothing needs redoing.",
       "report": "Report it and the data is preserved exactly; nothing is discarded silently."
+    },
+    "time": {
+      "just-now": "just now",
+      "minutes": "{count} min before",
+      "hours": "{count} hr before"
     }
   }
 }

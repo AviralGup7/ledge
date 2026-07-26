@@ -37,12 +37,14 @@ const zone1 = { zone: 'zone1' as const };
 
 // ─── registry integrity ──────────────────────────────────────────────────────────
 describe('E1-T11 registry', () => {
-  it('catalogue covers §3.3–3.7 exactly: 29 commands, 8 queries, 13 streams, 17 workroom, 5 sync', () => {
+  it('catalogue covers §3.3–3.7 exactly: 30 commands, 9 queries, 13 streams, 17 workroom, 5 sync', () => {
+    // E6-T01 (user-ruled additive amendment, docs/adr-notes/e6-recovery-w7.md):
+    // RestoreBootSession (29→30) + GetBootReport (8→9) — W7 wire pair.
     const byFamily = Object.values(MESSAGE_REGISTRY).reduce<Record<string, number>>(
       (acc, s) => ({ ...acc, [s.family]: (acc[s.family] ?? 0) + 1 }),
       {},
     );
-    expect(byFamily).toEqual({ command: 29, query: 8, stream: 13, workroom: 17, sync: 5 });
+    expect(byFamily).toEqual({ command: 30, query: 9, stream: 13, workroom: 17, sync: 5 });
   });
 
   it('every payload spec has at least one required-or-optional key, or is a declared empty payload', () => {

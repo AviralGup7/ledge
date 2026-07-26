@@ -37,6 +37,8 @@ const NEVER_AUTO_RETRY_WIRE: readonly string[] = [
   'EmptyTrash', // C17 irreversible
   'Undo', // C18 + §10-R9 ambiguity law
   'ForgetEverything', // C25 irreversible
+  // E6-T01: mid-flight retry could double-open restored windows (C11-class).
+  'RestoreBootSession',
 ];
 /** §2.6 hub law: heavy sweeps ride the maintenance lane. */
 const MAINTENANCE_LANE_WIRE: readonly string[] = ['RescueScanNow'];

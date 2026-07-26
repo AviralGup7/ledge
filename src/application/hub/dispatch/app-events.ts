@@ -37,7 +37,15 @@ export type AppEvent =
       readonly watermark: number;
       readonly ops: readonly unknown[];
     }
-  | { readonly type: 'heartbeat'; readonly keptCount: number; readonly liveRecoverable: number };
+  | { readonly type: 'heartbeat'; readonly keptCount: number; readonly liveRecoverable: number }
+  | {
+      /** E6-T01 · W7 boot fact (Blueprint §5.9): the recovery boot hook publishes
+       *  exactly ONE per incident-class boot; the outbox owns the §3.5
+       *  RecoveryAvailable translation. severity is the §14.4 gate input. */
+      readonly type: 'recovery-available';
+      readonly bootReportId: string;
+      readonly severity: 'loss-risk' | 'clean-abnormal';
+    };
 
 export type AppEventListener = (event: AppEvent) => void;
 

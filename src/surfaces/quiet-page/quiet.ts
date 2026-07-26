@@ -6,6 +6,7 @@
 import type { SenderContext } from '@/application/contracts/index.js';
 import type { ImportStageWriter } from '../components/session/import-stage.js';
 import { copyOf } from '../components/copy/copy.js';
+import { relTimeOf } from '../components/copy/reltime.js';
 import { clearChildren, el, inputValue } from '../components/dom/dom.js';
 import { bindKeys } from '../components/dom/keyboard.js';
 import { ensureLiveRegion, type LiveAnnouncer } from '../components/dom/live.js';
@@ -127,6 +128,8 @@ export const mountQuietPage = (doc: Document, deps: QuietDeps): Mounted => {
   });
   const firstRunSlot = el(doc, 'div', { attrs: { 'data-slot': 'first-run' } });
   const streamsSlot = el(doc, 'div', { attrs: { 'data-slot': 'streams' } });
+  /** E6-T01 · W7 card venue (§5.9/§14.4): sits above the sections, below the pill. */
+  const recoverySlot = el(doc, 'div', { attrs: { 'data-slot': 'recovery' } });
   const content = el(doc, 'section', {
     cls: 'quiet-content',
     attrs: { 'data-section': 'content', tabindex: '0' },
@@ -138,6 +141,7 @@ export const mountQuietPage = (doc: Document, deps: QuietDeps): Mounted => {
   root.appendChild(nav);
   root.appendChild(pendingStrip);
   root.appendChild(firstRunSlot);
+  root.appendChild(recoverySlot);
   root.appendChild(streamsSlot);
   root.appendChild(content);
   doc.body.appendChild(root);
@@ -164,6 +168,164 @@ export const mountQuietPage = (doc: Document, deps: QuietDeps): Mounted => {
         attrs: { 'data-banner': kind, role: 'status' },
       }),
     );
+  };
+
+  // ── E6-T01 · W7 recovery card (§14.4: card ONLY on loss-risk, queried truth) ──
+  // The stream is fire-and-forget, so the card never trusts it: every signal
+  // re-queries GetBootReport and renders the returned DTO. Disclosure tokens are
+  // mapped through a STATIC copy table (the copy census reads literal keys).
+  interface BootReportWire {
+    readonly bootReportId: string;
+    readonly severity: string;
+    readonly copyKey: string | null;
+    readonly asOf: number;
+    readonly scope: { readonly tabsRecoverable: number; readonly missionsAffected: number };
+    readonly disclosure: readonly { readonly token: string; readonly count: number }[];
+    readonly pending: boolean;
+  }
+
+  const DISCLOSURE_COPY: Readonly<Record<string, string>> = {
+    'journal-truncate': 'msg.recovery.note-truncate',
+    'left-open': 'msg.recovery.note-left-open',
+    deferred: 'msg.recovery.note-deferred',
+    'crosscheck-degraded': 'msg.recovery.note-crosscheck',
+    'marker-gap': 'msg.recovery.note-marker-gap',
+  };
+
+  let recoveryView: BootReportWire | null = null;
+  let reviewOpen = false;
+
+  const asBootReport = (value: unknown): BootReportWire | null => {
+    const raw = asRecord(value);
+    if (typeof raw['bootReportId'] !== 'string') return null;
+    const scope = asRecord(raw['scope']);
+    return {
+      bootReportId: raw['bootReportId'],
+      severity: asString(raw['severity']),
+      copyKey: typeof raw['copyKey'] === 'string' ? raw['copyKey'] : null,
+      asOf: asNumber(raw['asOf']),
+      scope: {
+        tabsRecoverable: asNumber(scope['tabsRecoverable']),
+        missionsAffected: asNumber(scope['missionsAffected']),
+      },
+      disclosure: asRecords(raw['disclosure']).map((d) => ({
+        token: asString(d['token']),
+        count: asNumber(d['count']),
+      })),
+      pending: raw['pending'] === true,
+    };
+  };
+
+  const renderRecovery = (): void => {
+    clearChildren(recoverySlot);
+    const view = recoveryView;
+    if (view === null || !view.pending) return; // §14.4 gate rides the DTO
+    const titleKey = view.copyKey ?? 'msg.recovery.crashed';
+    const card = el(doc, 'div', {
+      cls: 'recovery-card',
+      attrs: { 'data-card': 'recovery', 'data-severity': view.severity, role: 'status' },
+    });
+    card.appendChild(
+      el(doc, 'p', {
+        cls: 'state-line',
+        text: copyOf(titleKey, { asOf: relTimeOf(view.asOf) }),
+        attrs: { 'data-line': 'recovery-title' },
+      }),
+    );
+    card.appendChild(
+      el(doc, 'p', {
+        cls: 'state-recovery',
+        text: copyOf('msg.recovery.scope', {
+          tabs: view.scope.tabsRecoverable,
+          missions: view.scope.missionsAffected,
+        }),
+        attrs: { 'data-line': 'recovery-scope' },
+      }),
+    );
+    const actions = el(doc, 'div', { cls: 'recovery-actions' });
+    actions.appendChild(
+      actionButton(doc, {
+        copyKey: 'msg.action.put-back',
+        action: 'put-back',
+        primary: true,
+        onClick: () => {
+          runPutBack(view.bootReportId);
+        },
+      }),
+    );
+    if (view.disclosure.length > 0) {
+      actions.appendChild(
+        actionButton(doc, {
+          copyKey: 'msg.action.review-first',
+          action: 'review-first',
+          onClick: () => {
+            reviewOpen = !reviewOpen;
+            renderRecovery();
+          },
+        }),
+      );
+    }
+    card.appendChild(actions);
+    if (reviewOpen && view.disclosure.length > 0) {
+      const notes = el(doc, 'ul', {
+        cls: 'recovery-notes',
+        attrs: { 'data-panel': 'recovery-review', role: 'list' },
+      });
+      for (const d of view.disclosure) {
+        const key = DISCLOSURE_COPY[d.token];
+        if (key === undefined) continue; // unknown token: tolerate, never throw
+        notes.appendChild(
+          el(doc, 'li', {
+            text: copyOf(key, { count: d.count }),
+            attrs: { 'data-line': `recovery-note-${d.token}` },
+          }),
+        );
+      }
+      card.appendChild(notes);
+    }
+    recoverySlot.appendChild(card);
+  };
+
+  const resolveRecovery = (card: {
+    missionsRestored: number;
+    disclosure: readonly string[];
+  }): void => {
+    // Settled outcomes: any content-gap token ⇒ the honest partial line.
+    const partial = card.disclosure.some((t) => t === 'no-content' || t === 'mission-gone');
+    const key = partial ? 'msg.recovery.restored-partial' : 'msg.recovery.restored';
+    recoveryView = null;
+    reviewOpen = false;
+    clearChildren(recoverySlot);
+    recoverySlot.appendChild(
+      el(doc, 'p', {
+        cls: 'state-line',
+        text: copyOf(key),
+        attrs: { 'data-card': 'recovery-resolved', role: 'status' },
+      }),
+    );
+    live.say(copyOf(key));
+  };
+
+  const runPutBack = (bootReportId: string): void => {
+    runCommand('RestoreBootSession', { bootReportId }, (value) => {
+      const result = asRecord(value);
+      resolveRecovery({
+        missionsRestored: asNumber(result['missionsRestored']),
+        disclosure: Array.isArray(result['disclosure'])
+          ? (result['disclosure'] as unknown[]).filter((x): x is string => typeof x === 'string')
+          : [],
+      });
+    });
+  };
+
+  /** Truth re-query — the ONLY way the card comes or goes (streams merely hint). */
+  const refreshRecovery = (): void => {
+    const q = client.query('GetBootReport', {});
+    void q.terminal.then((t) => {
+      if (!t.ok) return; // a report read failure never fabricates a card
+      recoveryView = asBootReport(t.value);
+      renderRecovery();
+    });
   };
 
   const renderPending = (): void => {
@@ -1168,12 +1330,10 @@ export const mountQuietPage = (doc: Document, deps: QuietDeps): Mounted => {
       live.say(copyOf('msg.heartbeat.safe', { count: asNumber(p['keptCount']) }));
     },
     RecoveryAvailable: (payload) => {
-      const p = asRecord(payload);
-      const severity = asString(p['severity']);
-      showBanner(
-        severity === 'clean-abnormal' ? 'msg.recovery.updated' : 'msg.recovery.crashed',
-        'recovery',
-      );
+      void payload;
+      // The stream is only a hint (fire-and-forget): the card queries the
+      // report and §14.4-gates on the returned DTO — never on the hint itself.
+      refreshRecovery();
     },
     ResyncRequired: (payload) => {
       const p = asRecord(payload);
@@ -1233,6 +1393,7 @@ export const mountQuietPage = (doc: Document, deps: QuietDeps): Mounted => {
 
   const detachWake = deps.onWake?.(() => {
     void refreshBootstrap(() => renderSection(currentSection));
+    refreshRecovery();
   });
 
   const detachKeys = bindKeys(doc.body, [
@@ -1263,6 +1424,7 @@ export const mountQuietPage = (doc: Document, deps: QuietDeps): Mounted => {
   // keeps pre-boot blanks forever (the wake/rejoin paths already re-render this way).
   renderNav();
   renderSection('library');
+  refreshRecovery(); // W7 card truth rides the SAME boot read path as the shell
   void refreshBootstrap(() => {
     if (booted) renderSection(currentSection);
   });

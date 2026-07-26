@@ -232,6 +232,12 @@ export const createOutbox = (deps: OutboxDeps): Outbox => {
         });
         return;
       }
+      case 'recovery-available': {
+        // E6-T01 · one boot fact per incident boot; the frozen row's wire-shape
+        // proof (canonical-Id bootReportId + severity enum) runs in emit.
+        emit('RecoveryAvailable', { bootReportId: e.bootReportId, severity: e.severity });
+        return;
+      }
     }
   };
 

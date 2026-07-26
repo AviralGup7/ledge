@@ -24,6 +24,8 @@ import type {
 } from '@/application/ports/import-export.port.js';
 import type { SearchRankPort } from '@/application/ports/search.port.js';
 import type { JournalPort } from '@/application/ports/journal.port.js';
+import type { IntentLedgerPort } from '@/application/ports/intent-ledger.port.js';
+import type { ProjectionEnginePort } from '@/application/ports/projection-engine.port.js';
 import { CONTRACT_V } from '@/application/contracts/envelope.js';
 import type { SnapshotsPort } from '@/application/ports/snapshots.port.js';
 import type { StoreName } from '@/application/ports/storage-engine.port.js';
@@ -46,6 +48,8 @@ import { createIntentLedger } from '@/infrastructure/intents/ledger.js';
 import { createJournal } from '@/infrastructure/journal/index.js';
 import { createV1ProjectionEngine } from '@/infrastructure/projections/index.js';
 import { stampInstallMarker } from '@/infrastructure/recovery/marker/index.js';
+import { runBootSequence } from '@/infrastructure/recovery/index.js';
+import type { StorageAreaPort } from '@/application/ports/storage-area.port.js';
 import { createSearchRankAdapter } from '@/infrastructure/search/index.js';
 import {
   createEngineModelSource,
@@ -161,6 +165,15 @@ export interface BackgroundRuntimeDeps {
   /** §3.5 transport seam; default is the guarded chrome.runtime broadcast (silent
    *  drop when no surface is listening — streams are fire-and-forget by law). */
   readonly publish?: ((message: WireStreamMessage) => void) | undefined;
+  /** E6-T01 recovery boot act (default: the real graph — boot sequence → incident
+   *  slot → ONE recovery-available bus fact → §14.4 card). `false` ⇒ never kicks
+   *  (composition tests); a factory override rides the same ports. */
+  readonly recovery?: RecoveryRunFactory | false | undefined;
+  /** Marker/build version seam (default: the running manifest version). */
+  readonly version?: string | undefined;
+  /** Marker storage seam (default: the lazy-ambient chrome adapter — degrades to
+   *  the 'undetectable' signal in chrome-less hosts, never a boot crash). */
+  readonly storageArea?: StorageAreaPort | undefined;
 }
 
 export interface BackgroundGraph {
@@ -277,6 +290,91 @@ const guardedBroadcast = (message: WireStreamMessage): void => {
   }
 };
 
+// ─────────────────────────── E6-T01 recovery boot act ───────────────────────────
+
+/** Quiet-page card venue (§5.9: the W7 card opens as a SINGLE quiet tab). */
+const QUIET_CARD_PAGE = 'quiet-page.html';
+
+/** Composition surface the recovery boot act runs against (roots-only seam). */
+export interface RecoveryBootPorts {
+  readonly journal: JournalPort;
+  readonly ledger: IntentLedgerPort;
+  readonly projections: ProjectionEnginePort;
+  readonly services: AppServices;
+  readonly bus: AppEventBus;
+  readonly tabs: TabsPort;
+  readonly ids: IdGenerator;
+  readonly now: Now;
+  readonly deviceId: DeviceId;
+  readonly version: string;
+  readonly area: StorageAreaPort;
+  /** Card-venue opener (default: the guarded single quiet tab). */
+  readonly openCard?: (() => void) | undefined;
+}
+
+export type RecoveryRun = () => Promise<void>;
+export type RecoveryRunFactory = (ports: RecoveryBootPorts) => RecoveryRun;
+
+/** §5.9 venue law: re-focus the existing card tab when present — never a second. */
+const openQuietRecoveryCard = (): void => {
+  try {
+    const url = chrome.runtime.getURL(QUIET_CARD_PAGE);
+    void chrome.tabs
+      .query({ url })
+      .then((found) => {
+        const existing = found[0];
+        if (existing?.id !== undefined) {
+          void chrome.tabs.update(existing.id, { active: true }).catch(() => undefined);
+          return;
+        }
+        void chrome.tabs.create({ url, active: true }).catch(() => undefined);
+      })
+      .catch(() => undefined);
+  } catch {
+    // Chrome-less host: the card venue is a chrome act — an absent API is a skip.
+  }
+};
+
+/**
+ * The boot act: marker-classified boot sequence → incident slot → ONE
+ * recovery-available bus fact per incident (the outbox owns the §3.5 wire
+ * translation) → card venue opened only when the slot says the §14.4 gate
+ * holds. A sequence/record failure degrades SILENTLY (the diagnostics tier
+ * owns boot telemetry, E6-T03) — it never blocks or crashes the background.
+ */
+export function composeRecoveryRun(ports: RecoveryBootPorts): RecoveryRun {
+  return async () => {
+    const sequence = await runBootSequence({
+      reconciler: {
+        journal: ports.journal,
+        ledger: ports.ledger,
+        projections: ports.projections,
+        liveTabsProbe: async () => {
+          const listed = await ports.tabs.query({});
+          return listed.ok ? ok(listed.value.length) : err(listed.error);
+        },
+        deviceId: ports.deviceId,
+        now: ports.now,
+        ids: ports.ids,
+      },
+      area: ports.area,
+      version: ports.version,
+    });
+    if (!sequence.ok) return;
+    const recorded = await ports.services.recovery.recordBoot(sequence.value);
+    if (!recorded.ok) return;
+    const answer = recorded.value;
+    if (answer.announce && answer.severity !== null) {
+      ports.bus.publish({
+        type: 'recovery-available',
+        bootReportId: answer.bootReportId,
+        severity: answer.severity,
+      });
+      if (answer.cardWanted) (ports.openCard ?? openQuietRecoveryCard)();
+    }
+  };
+}
+
 /** E3-APP · assemble the application runtime from boot truth (device-anchored). */
 const buildRuntime = (
   storage: StorageEnginePort,
@@ -335,13 +433,14 @@ const buildRuntime = (
     deps.importBytesStage ??
     (stageIdb !== undefined ? createImportBytesStage({ idb: stageIdb, now }) : undefined);
   const ledger = createIntentLedger({ engine: storage, journal });
+  const tabs = deps.tabs ?? createChromeTabsAdapter();
   const services = createServices({
     engine: storage,
     journal,
     projections,
     ledger,
     snapshots: deps.snapshots ?? createSnapshotsAdapter({ engine: storage, ids }),
-    tabs: deps.tabs ?? createChromeTabsAdapter(),
+    tabs,
     windows: deps.windows ?? createChromeWindowsAdapter(),
     ids,
     deviceId: booted.deviceId,
@@ -391,6 +490,30 @@ const buildRuntime = (
     },
   });
   const stopOutbox = outbox.start();
+
+  // E6-T01 · The recovery graph lands here (E2's placeholder): SW wake ⇒ boot
+  // sequence (marker classify → reconcile) → incident slot (services.recovery)
+  // → ONE recovery-available bus fact (announce-gated §14.4/R16; the outbox
+  // owns the wire translation) → card venue opened only on loss-risk. The act
+  // is fire-and-forget by law — a recovery fault never takes the graph down.
+  if (deps.recovery !== false) {
+    const makeRun: RecoveryRunFactory = deps.recovery ?? composeRecoveryRun;
+    void makeRun({
+      journal,
+      ledger,
+      projections,
+      services,
+      bus,
+      tabs,
+      ids,
+      now,
+      deviceId: booted.deviceId,
+      version:
+        deps.version ??
+        (typeof chrome === 'undefined' ? 'unversioned' : chrome.runtime.getManifest().version),
+      area: deps.storageArea ?? createChromeStorageAreaAdapter(),
+    })().catch(() => undefined);
+  }
 
   return {
     bus,
@@ -452,9 +575,9 @@ export function composeBackgroundGraph(deps: BackgroundGraphDeps = {}): Backgrou
  * Activate the background context. Listeners register first and synchronously
  * (ADR-007); the async boot proceeds behind them and its Result is retained on
  * the returned graph. The onInstalled listener stamps the version-change
- * marker (EES-R16 disambiguator input) through the StorageAreaPort adapter —
- * the rest of the crash-marker lifecycle + boot reconcile (runBootSequence)
- * wires here when the recovery graph lands (ledger/projections composition).
+ * marker (EES-R16 disambiguator input) through the StorageAreaPort adapter;
+ * the full crash-marker lifecycle + boot reconcile runs as the recovery boot
+ * act inside buildRuntime (E6-T01 — the recovery graph has landed).
  */
 /**
  * E4 · Surface channel: the ONLY inbound wire path from extension pages

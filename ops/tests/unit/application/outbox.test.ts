@@ -114,6 +114,26 @@ describe('E3-APP outbox — wire-shape proof at the ONLY publish point', () => {
     expect(heartbeats).toBeLessThanOrEqual(2);
   });
 
+  it('recovery-available translates to the frozen row (E6-T01; shape-proof drops garbage)', () => {
+    const h = makeOutbox();
+    h.bus.publish({
+      type: 'recovery-available',
+      bootReportId: '01J6XW8B3TEST0000000000001',
+      severity: 'loss-risk',
+    });
+    const raised = h.published.find((m) => m.name === 'RecoveryAvailable');
+    expect(raised).toEqual({
+      name: 'RecoveryAvailable',
+      payload: { bootReportId: '01J6XW8B3TEST0000000000001', severity: 'loss-risk' },
+    });
+    // Wire-shape proof: a non-canonical id is a defect — dropped, never published.
+    const before = h.published.length;
+    h.bus.publish({ type: 'recovery-available', bootReportId: 'not-an-id', severity: 'loss-risk' });
+    expect(h.published.length).toBe(before);
+    expect(h.outbox.drops().some((d) => d.name === 'RecoveryAvailable')).toBe(true);
+    h.stop();
+  });
+
   it('failed rides the flat §3.2 envelope; cancelled has no v1 wire carrier', () => {
     const h = makeOutbox();
     h.bus.publish({

@@ -319,6 +319,9 @@ export const makeServices = async (
     readonly withIngest?: boolean | undefined;
     /** Extra projection-frame subscriber (outbox bridging in the integration slice). */
     readonly onFrame?: ((frame: ViewDeltaFrame) => void) | undefined;
+    /** E6-T01 failure-path seams: swap the chrome fakes for fault-injecting ports. */
+    readonly tabs?: TabsPort | undefined;
+    readonly windows?: WindowsPort | undefined;
     readonly importer?: ServiceDeps['importer'];
     readonly exporter?: ServiceDeps['exporter'];
     readonly importBytesStage?: ServiceDeps['importBytesStage'];
@@ -359,8 +362,8 @@ export const makeServices = async (
     projections,
     ledger,
     snapshots: fakeSnapshots,
-    tabs: fakeTabs,
-    windows: fakeWindows,
+    tabs: opts.tabs ?? fakeTabs,
+    windows: opts.windows ?? fakeWindows,
     ids,
     deviceId: DEV_A,
     now,

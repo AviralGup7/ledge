@@ -246,6 +246,15 @@ export const WIRE_COMMANDS: readonly CommandRegistration<S>[] = [
       useCtx(ctx),
     ),
   ),
+  commandOf(
+    'RestoreBootSession',
+    (ctx) => {
+      const bootReportId = str(ctx.message.payload['bootReportId']);
+      if (bootReportId === undefined) return missing('RestoreBootSession', 'bootReportId');
+      return ctx.services.recovery.restoreBootSession({ bootReportId }, useCtx(ctx));
+    },
+    { neverAutoRetry: true }, // mid-flight retry could double-open windows (C11-class)
+  ),
 ];
 
 export const WIRE_QUERIES: readonly QueryRegistration<S>[] = [
@@ -280,6 +289,11 @@ export const WIRE_QUERIES: readonly QueryRegistration<S>[] = [
   queryOf('GetHealth', (ctx) => ctx.services.queries.getHealth()),
   queryOf('PeekOpenTabs', (ctx) =>
     ctx.services.queries.peekOpenTabs({ windowId: num(ctx.message.payload['windowId']) }),
+  ),
+  queryOf('GetBootReport', (ctx) =>
+    ctx.services.recovery.getBootReport({
+      bootReportId: str(ctx.message.payload['bootReportId']),
+    }),
   ),
 ];
 

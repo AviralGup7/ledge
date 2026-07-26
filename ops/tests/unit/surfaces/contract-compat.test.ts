@@ -130,7 +130,10 @@ describe('E4 compat · surface payloads validate against the registry specs', ()
     StartMission: { name: 'A mission' },
     Undo: {},
     FirstRunIngest: {},
+    // E6-T01 · W7 pair (the quiet card's put-back + report fetch).
+    RestoreBootSession: { bootReportId: ID_A },
     GetBootstrap: { surface: 'guardian' },
+    GetBootReport: {},
     PeekOpenTabs: {},
     SearchQuery: { q: 'query', scope: 'all', limit: 20 },
     GetLibrary: { filter: { state: 'archived' } },

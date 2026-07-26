@@ -17,6 +17,8 @@ import type { PortabilityService } from './portability.js';
 import { createPortabilityService } from './portability.js';
 import type { SystemService } from './system.js';
 import { createSystemService } from './system.js';
+import type { RecoveryService } from './recovery.js';
+import { createRecoveryService } from './recovery.js';
 import type { PrefsService } from './prefs.js';
 import { createPrefsService } from './prefs.js';
 import type { TabsInternalService } from './tabs-internal.js';
@@ -34,6 +36,7 @@ export type { ResumeService } from './resume.js';
 export type { QueryService } from './queries.js';
 export type { PortabilityService } from './portability.js';
 export type { SystemService } from './system.js';
+export type { RecoveryService } from './recovery.js';
 export type { PrefsService } from './prefs.js';
 export type { TabsInternalService } from './tabs-internal.js';
 
@@ -47,6 +50,7 @@ export interface AppServices {
   readonly queries: QueryService;
   readonly portability: PortabilityService;
   readonly system: SystemService;
+  readonly recovery: RecoveryService;
   readonly prefs: PrefsService;
   readonly tabs: TabsInternalService;
 }
@@ -70,6 +74,7 @@ export const createServices = (deps: ServiceDeps): AppServices => {
     queries: createQueryService(edge),
     portability: createPortabilityService(edge),
     system: createSystemService(edge),
+    recovery: createRecoveryService(edge),
     prefs: createPrefsService(edge),
     tabs: createTabsInternalService(edge),
   };

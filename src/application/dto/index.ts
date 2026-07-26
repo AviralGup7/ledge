@@ -112,6 +112,36 @@ export interface SearchResultsView {
   readonly searchedScopes: readonly string[];
 }
 
+/**
+ * E6-T01 · W7 report DTO (GetBootReport response). Display-free: copyKey is the
+ * report's own §14.4-computed catalog key, disclosure entries are STABLE TOKENS
+ * with counts (the catalog renders them — payloads never carry copy, §3.2).
+ * Scope is TRUTH-NOW (current restorable rows), asOf is last-known tab activity.
+ */
+export interface BootReportDisclosure {
+  readonly token: string;
+  readonly count: number;
+}
+
+export interface BootReportView {
+  readonly bootReportId: string;
+  readonly severity: 'loss-risk' | 'clean-abnormal';
+  /** Marker taxonomy (EES-R16): updated | crashed | warm-recycle | first-run | undetectable. */
+  readonly cause: string;
+  readonly copyKey: string | null;
+  readonly outcome: string;
+  readonly asOf: number;
+  readonly scope: {
+    readonly tabsRecoverable: number;
+    readonly missionsAffected: number;
+  };
+  readonly crossCheck: string;
+  readonly disclosure: readonly BootReportDisclosure[];
+  /** §14.4 card predicate: severity loss-risk AND unsettled. */
+  readonly pending: boolean;
+  readonly restoredAt: number | null;
+}
+
 export interface OpenTabView {
   readonly browserTabId: number;
   readonly windowId: number;

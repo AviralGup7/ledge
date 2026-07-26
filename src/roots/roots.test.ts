@@ -3,12 +3,23 @@
 import { describe, expect, it } from 'vitest';
 import { CONTRACT_V, computeContractHash } from '@/application/contracts/index.js';
 import type { MessageEnvelope, ValidationOutcome } from '@/application/contracts/index.js';
+import type { WireStreamMessage } from '@/application/hub/outbox/index.js';
 import type { QuotaStatus } from '@/application/ports/storage-engine.port.js';
-import { DEV_A, makeEnv, uniqueKey } from '@/infrastructure/journal/core/testkit.js';
+import type { StorageEnginePort } from '@/application/ports/storage-engine.port.js';
+import { DEV_A, makeEnv, testId, uniqueKey } from '@/infrastructure/journal/core/testkit.js';
+import {
+  makeAlive,
+  makeBoot,
+  makeInstall,
+  makeMarkerArea,
+  MARKER_KEYS,
+  VERSION_1,
+  type MarkerArea,
+} from '@/infrastructure/recovery/marker/testkit.js';
 import { createMemoryStorageEngine } from '@/infrastructure/storage/memory/memory-engine.js';
 import { isDeviceId, isId } from '@/shared-kernel/identity/index.js';
 import { err, ledgeError, ok } from '@/shared-kernel/result/index.js';
-import { composeBackgroundGraph } from './bg-root.js';
+import { composeBackgroundGraph, composeRecoveryRun } from './bg-root.js';
 import { composeWorkroomGraph } from './offscreen-root.js';
 import { composeQuietPageGraph } from './page-root.js';
 
@@ -256,5 +267,119 @@ describe('page-root — quiet-page graph (ADR-005 authority-free)', () => {
   it('hash seam overrides for handshake-skew fixtures', () => {
     const graph = composeQuietPageGraph({ contractHash: 'fixed-hash' });
     expect(graph.hello.contractHash).toBe('fixed-hash');
+  });
+});
+
+// ───────────────────── E6-T01 · recovery boot act (W7 wiring) ─────────────────────
+
+describe('E6-T01 — recovery boot act (Blueprint §5.9 + §14.4 gate at composition)', () => {
+  const MARKER_BASE = 1_900_000_000_000;
+  const OPEN_TRIES = 1_000;
+
+  const crashedMarkerArea = async () => {
+    const area = makeMarkerArea();
+    // Abnormal-seed per ADR-007 §4: no alive marker armed; an install stamp OLDER
+    // than the last completed boot (R16 ⇒ NOT updated ⇒ crashed under same build).
+    await area.port.localSet(
+      MARKER_KEYS.install,
+      makeInstall({ reason: 'install', version: VERSION_1, atTs: MARKER_BASE }),
+    );
+    await area.port.localSet(
+      MARKER_KEYS.boot,
+      makeBoot({ version: VERSION_1, atTs: MARKER_BASE + 1_000 }),
+    );
+    return area;
+  };
+
+  /** Plant one universal-family dangling intent (no lawful abort row ⇒ deferred ⇒ loss-risk). */
+  const plantDanglingIntent = async (engine: StorageEnginePort): Promise<void> => {
+    const opened = await engine.open();
+    expect(opened.ok).toBe(true);
+    const r = await engine.txn(['intents'], 'readwrite', async (tx) => {
+      await tx.table('intents').put({
+        intentId: testId(9_300_001),
+        cid: testId(9_300_002),
+        kind: 'RescueScanNow',
+        scope: {},
+        state: 'intent',
+        issuedAt: 1,
+        retryCount: 0,
+      });
+    });
+    expect(r.ok).toBe(true);
+  };
+
+  const until = async (pred: () => boolean): Promise<void> => {
+    for (let i = 0; i < OPEN_TRIES && !pred(); i += 1) await new Promise((r) => setTimeout(r, 1));
+    if (!pred()) throw new Error('recovery boot act never published');
+  };
+
+  const composeWithRecovery = async (
+    engine: StorageEnginePort,
+    area: MarkerArea,
+  ): Promise<{
+    readonly published: WireStreamMessage[];
+    readonly cardOpens: () => number;
+  }> => {
+    const published: WireStreamMessage[] = [];
+    let cardOpens = 0;
+    const graph = composeBackgroundGraph({
+      storage: engine,
+      runtime: {
+        publish: (m) => {
+          published.push(m);
+        },
+        version: VERSION_1,
+        storageArea: area.port,
+        recovery: (ports) =>
+          composeRecoveryRun({
+            ...ports,
+            openCard: () => {
+              cardOpens += 1;
+            },
+          }),
+      },
+    });
+    const runtime = await graph.runtime;
+    expect(runtime.ok).toBe(true);
+    return { published, cardOpens: () => cardOpens };
+  };
+
+  it('crashed restart + dangling intent ⇒ ONE RecoveryAvailable(loss-risk) + card opened', async () => {
+    const engine = createMemoryStorageEngine();
+    await plantDanglingIntent(engine);
+    const area = await crashedMarkerArea();
+    const { published, cardOpens } = await composeWithRecovery(engine, area);
+    await until(() => published.some((m) => m.name === 'RecoveryAvailable'));
+    const raised = published.filter((m) => m.name === 'RecoveryAvailable');
+    expect(raised.length).toBe(1);
+    const payload = raised[0]?.payload as { severity?: unknown; bootReportId?: unknown };
+    expect(payload.severity).toBe('loss-risk');
+    expect(isId(payload.bootReportId)).toBe(true);
+    expect(cardOpens()).toBe(1);
+  });
+
+  it('crashed restart without damage ⇒ clean-abnormal announce, NO card (§14.4)', async () => {
+    const engine = createMemoryStorageEngine();
+    const area = await crashedMarkerArea();
+    const { published, cardOpens } = await composeWithRecovery(engine, area);
+    await until(() => published.some((m) => m.name === 'RecoveryAvailable'));
+    const raised = published.filter((m) => m.name === 'RecoveryAvailable');
+    expect(raised.length).toBe(1);
+    const payload = raised[0]?.payload as { severity?: unknown };
+    expect(payload.severity).toBe('clean-abnormal');
+    expect(cardOpens()).toBe(0);
+  });
+
+  it('warm recycle stays silent — no copy path ever (marker taxonomy law)', async () => {
+    const engine = createMemoryStorageEngine();
+    const area = makeMarkerArea();
+    await area.port.sessionSet(MARKER_KEYS.alive, makeAlive({ version: VERSION_1 }));
+    await area.port.localSet(MARKER_KEYS.boot, makeBoot({ version: VERSION_1, atTs: MARKER_BASE }));
+    const { published, cardOpens } = await composeWithRecovery(engine, area);
+    // Give the whole act a fair window; silence is the ASSERTED outcome.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(published.filter((m) => m.name === 'RecoveryAvailable').length).toBe(0);
+    expect(cardOpens()).toBe(0);
   });
 });

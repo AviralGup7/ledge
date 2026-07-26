@@ -56,6 +56,25 @@ interface QuietHarness {
   readonly unmount: () => void;
 }
 
+/** E6-T01 · a pending loss-risk GetBootReport DTO (asOf fresh relative per render). */
+const pendingReport = (over: Readonly<Record<string, unknown>> = {}): Record<string, unknown> => ({
+  bootReportId: '01HF7XRECEVERY000000000000',
+  severity: 'loss-risk',
+  cause: 'crashed',
+  copyKey: 'msg.recovery.crashed',
+  outcome: 'recovered',
+  asOf: Date.now() - 210_000,
+  scope: { tabsRecoverable: 3, missionsAffected: 2 },
+  crossCheck: 'applied',
+  disclosure: [
+    { token: 'journal-truncate', count: 1 },
+    { token: 'left-open', count: 3 },
+  ],
+  pending: true,
+  restoredAt: null,
+  ...over,
+});
+
 /** The staged-file flow rides a duck-typed File (no DOM File in the unit lane). */
 const hatchFile = (elTarget: unknown, name: string, text: string): void => {
   const bytes = new TextEncoder().encode(text);
@@ -84,6 +103,7 @@ const mount = (): QuietHarness => {
     ['GetActivity', []],
     ['GetHistory', []],
     ['GetHealth', { storage: 'ok', journalHead: 41 }],
+    ['GetBootReport', null],
   ]);
   let wakeListener: (() => void) | undefined;
   const staged: { name: string; size: number; bytes: Uint8Array }[] = [];
@@ -793,15 +813,26 @@ describe('E4 quiet · streams, undo & lifecycle', () => {
     h.unmount();
   });
 
-  it('RecoveryAvailable shows the severity-driven recovery banner', async () => {
+  it('RecoveryAvailable is a hint only — the card arrives via GetBootReport, §14.4-gated', async () => {
     const h = mount();
     await answerAll(h);
+    // §14.4: without a pending loss-risk report there is NO card, whatever the hint says.
     h.fake.emitStream('RecoveryAvailable', {
       bootReportId: '01HF7YBRXWN000000000000000',
       severity: 'loss-risk',
     });
-    await flush();
-    expect(mustQuery(h.doc.body, '[data-banner="recovery"]').textContent).toContain(
+    await answerAll(h);
+    expect(h.doc.body.querySelector('[data-card="recovery"]')).toBeNull();
+    // The incident materializes in the DTO; the same hint now lands the card.
+    h.answers.set('GetBootReport', pendingReport());
+    h.fake.emitStream('RecoveryAvailable', {
+      bootReportId: '01HF7YBRXWN000000000000000',
+      severity: 'loss-risk',
+    });
+    await answerAll(h);
+    const card = mustQuery(h.doc.body, '[data-card="recovery"]');
+    expect(card.getAttribute('data-severity')).toBe('loss-risk');
+    expect(mustQuery(card, '[data-line="recovery-title"]').textContent).toContain(
       'Everything is safe',
     );
     h.unmount();
@@ -862,5 +893,97 @@ describe('E4 quiet · streams, undo & lifecycle', () => {
     expect(h.fake.countOf('Undo')).toBe(undos);
     expect(h.doc.body.querySelector('[data-surface="quiet"]')).toBeNull();
     expect(h.doc.body.querySelector('[data-live-region]')).toBeNull();
+  });
+});
+
+describe('E6-T01 quiet · W7 recovery card (§14.4 venue + catalog copy)', () => {
+  it('pending report renders title/scope with exact catalog copy', async () => {
+    const h = mount();
+    h.answers.set('GetBootReport', pendingReport({ asOf: Date.now() - 195_000 }));
+    await answerAll(h);
+    const card = mustQuery(h.doc.body, '[data-card="recovery"]');
+    expect(card.getAttribute('data-severity')).toBe('loss-risk');
+    expect(mustQuery(card, '[data-line="recovery-title"]').textContent).toBe(
+      copyOf('msg.recovery.crashed', { asOf: copyOf('msg.time.minutes', { count: 3 }) }),
+    );
+    expect(mustQuery(card, '[data-line="recovery-scope"]').textContent).toBe(
+      copyOf('msg.recovery.scope', { tabs: 3, missions: 2 }),
+    );
+    // §14.4: the card is not a banner — the banner lane stays clean.
+    expect(mustQuery(h.doc.body, '[data-slot="banner"]').textContent).toBe('');
+    h.unmount();
+  });
+
+  it('put-back rides RestoreBootSession and resolves to the restored receipt', async () => {
+    const h = mount();
+    h.answers.set('GetBootReport', pendingReport());
+    await answerAll(h);
+    mustQuery(h.doc.body, '[data-action="put-back"]').click();
+    await flush();
+    const sent = h.fake.lastOf('RestoreBootSession');
+    expect(sent.payload).toEqual({ bootReportId: '01HF7XRECEVERY000000000000' });
+    h.fake.apply(sent.cid, { missionsRestored: 2, tabsRestored: 3, disclosure: [] });
+    await flush();
+    expect(h.doc.body.querySelector('[data-card="recovery"]')).toBeNull();
+    expect(mustQuery(h.doc.body, '[data-card="recovery-resolved"]').textContent).toBe(
+      copyOf('msg.recovery.restored'),
+    );
+    expect(mustQuery(h.doc.body, '[data-live-region]').textContent).toBe(
+      copyOf('msg.recovery.restored'),
+    );
+    h.unmount();
+  });
+
+  it('content-gap tokens resolve to the honest partial line', async () => {
+    const h = mount();
+    h.answers.set('GetBootReport', pendingReport());
+    await answerAll(h);
+    mustQuery(h.doc.body, '[data-action="put-back"]').click();
+    await flush();
+    h.fake.apply(h.fake.lastOf('RestoreBootSession').cid, {
+      missionsRestored: 1,
+      tabsRestored: 2,
+      disclosure: ['no-content'],
+    });
+    await flush();
+    expect(mustQuery(h.doc.body, '[data-card="recovery-resolved"]').textContent).toBe(
+      copyOf('msg.recovery.restored-partial'),
+    );
+    h.unmount();
+  });
+
+  it('review-first expands disclosure notes with catalog copy and toggles shut', async () => {
+    const h = mount();
+    h.answers.set('GetBootReport', pendingReport());
+    await answerAll(h);
+    const card = mustQuery(h.doc.body, '[data-card="recovery"]');
+    expect(card.querySelector('[data-panel="recovery-review"]')).toBeNull();
+    mustQuery(card, '[data-action="review-first"]').click();
+    await flush();
+    const panel = mustQuery(h.doc.body, '[data-panel="recovery-review"]');
+    expect(mustQuery(panel, '[data-line="recovery-note-left-open"]').textContent).toBe(
+      copyOf('msg.recovery.note-left-open', { count: 3 }),
+    );
+    expect(mustQuery(panel, '[data-line="recovery-note-journal-truncate"]').textContent).toBe(
+      copyOf('msg.recovery.note-truncate'),
+    );
+    mustQuery(h.doc.body, '[data-action="review-first"]').click();
+    await flush();
+    expect(h.doc.body.querySelector('[data-panel="recovery-review"]')).toBeNull();
+    h.unmount();
+  });
+
+  it('non-pending reports never render a card (chip is the guardian venue)', async () => {
+    const h = mount();
+    h.answers.set('GetBootReport', pendingReport({ severity: 'clean-abnormal', pending: false }));
+    await answerAll(h);
+    expect(h.doc.body.querySelector('[data-card="recovery"]')).toBeNull();
+    h.fake.emitStream('RecoveryAvailable', {
+      bootReportId: '01HF7XRECEVERY000000000000',
+      severity: 'clean-abnormal',
+    });
+    await answerAll(h);
+    expect(h.doc.body.querySelector('[data-card="recovery"]')).toBeNull();
+    h.unmount();
   });
 });
