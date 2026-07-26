@@ -26,3 +26,5 @@ export type {
   SnapshotTakenPayload,
   SnapshotTrigger,
 } from './types.js';
+export { createSnapshotsAdapter } from './snapshots.adapter.js';
+export type { SnapshotsAdapterDeps } from './snapshots.adapter.js';
