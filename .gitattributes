@@ -2,3 +2,7 @@
 *.wasm binary
 *.png binary
 *.zip binary
+
+# E7-T01: the committed import corpus is a BYTE contract — line endings, BOMs,
+# and stray bytes ARE the test conditions (hostile classes). Never normalize.
+ops/fixtures/import/** -text

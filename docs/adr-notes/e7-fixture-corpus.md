@@ -121,3 +121,25 @@ implementation as the source of truth.
 - No parser code: WP5 (E5-T05) consumes `ops/fixtures/import/**` as its
   acceptance set; each FIXTURES.md class row becomes a parser test row.
 - No `budgets.json` change: corpora ride no bundle entrypoint.
+
+## 7. Finding (fixed in flight, follow-up commit): git normalization silently retires hostile classes
+
+**Caught at ship time:** the repo-wide `.gitattributes` law (`* text=auto eol=lf`)
+normalized CRLF → LF **in the committed blob** of `hostile-crlf-blank-noise.txt`
+and stripped the mixed endings of `hostile-unicode-bom.txt` — the two hostile
+classes whose bytes ARE the test condition were castrated in the corpus commit
+itself (`7595d32`), with only an add-time warning as signal.
+
+**Fix (same WP, honest second commit — no force-push):**
+`ops/fixtures/import/** -text` in `.gitattributes` (the corpus is a byte
+contract; the repo-wide LF law keeps every other file), index refreshed under
+the rule (`i/crlf`, `i/mixed` verified), plus a **byte-honesty tripwire** in
+`corpus-privacy.test.ts`: CRLF presence, BOM bytes (EF BB BF), mega-line
+length, stray-prefix byte — a normalization pass now fails the unit lane
+instead of silently editing the corpus.
+
+**Why it belongs in this note:** the hazard class ("tooling helpfully rewrites
+fixture bytes") generalizes — any future byte-significant fixture family must
+declare `-text` up front and assert its bytes in the lane. The privacy scan's
+strict-unparseable posture (§1) and this tripwire are the same law: a corpus
+you cannot verify byte-for-byte is a corpus you do not have.

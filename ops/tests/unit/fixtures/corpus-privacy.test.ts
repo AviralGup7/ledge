@@ -50,6 +50,22 @@ describe('E7-T01 import corpus · privacy and attribution laws', () => {
     expect(violations).toEqual([]);
   });
 
+  it('hostile classes are byte-honest (line endings, BOM, and size survive checkout)', () => {
+    // The corpus is a byte contract (.gitattributes: ops/fixtures/import/** -text)
+    // — a normalization pass that strips these bytes silently retires the class.
+    const BINARY = 'latin1'; // byte-preserving view for byte assertions
+    const crlf = readFileSync(`${IMPORT_ROOT}/onetab/hostile-crlf-blank-noise.txt`, BINARY);
+    expect(crlf).toContain('\r\n');
+    const bom = readFileSync(`${IMPORT_ROOT}/onetab/hostile-unicode-bom.txt`, BINARY);
+    expect(bom.charCodeAt(0)).toBe(0xef); // UTF-8 BOM byte 1 (EF BB BF)
+    expect(bom.charCodeAt(1)).toBe(0xbb);
+    expect(bom.charCodeAt(2)).toBe(0xbf);
+    const mega = readFileSync(`${IMPORT_ROOT}/onetab/hostile-mega-line.txt`, BINARY);
+    expect(mega.split('\n')[0]?.length ?? 0).toBeGreaterThan(3900); // ~4 KB mega-line
+    const stray = readFileSync(`${IMPORT_ROOT}/sessionbuddy/hostile-stray-prefix.json`, BINARY);
+    expect(stray.charCodeAt(0)).not.toBe('['.charCodeAt(0)); // stray byte precedes the array
+  });
+
   it('FIXTURES.md attribution census matches the committed corpus both ways', () => {
     const onDisk = new Set(
       walk(IMPORT_ROOT)
