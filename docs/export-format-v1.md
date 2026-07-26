@@ -442,9 +442,12 @@ The read-forever promise binds Ledge; these rules bind readers:
 `formatV = 1` is the only produced format. The promise (ADR-045): **every Ledge release reads
 format v1 for as long as Ledge exists** — a user's decade-old file stays importable. Any change
 to §2–§7 is an ADR, a `formatV` bump, an update to this document, and new tripwires in the same
-PR; v1 itself is frozen, never edited in place. The first-party reader (`parser-ledge-export`,
-roadmap E5-T05) is bound by §8 and by the round-trip law: importing a v1 export reconstructs
-the exported truth, timestamps preserved as source metadata (§8.6).
+PR; v1 itself is frozen, never edited in place. The first-party reader (`parser-ledge-export`)
+is bound by §8 and by the round-trip law: importing a v1 export reconstructs
+the exported truth, timestamps preserved as source metadata (§8.6). **Ship status:** it is
+_not_ part of roadmap E5-T05 (that milestone ships the three foreign-format parsers:
+OneTab, SessionBuddy, Netscape); the first-party v1 reader is a recorded v1.x gap, tracked
+as **[follow-up]** in `docs/adr-notes/e5-importers.md`.
 
 ## 10. Tripwire index
 

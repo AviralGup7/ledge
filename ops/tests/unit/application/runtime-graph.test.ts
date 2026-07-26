@@ -107,7 +107,12 @@ describe('E3-APP runtime — post-boot composition law', () => {
     await g.engine.close();
   });
 
-  it('unwired portability seams answer honest E_CAPABILITY through the composed graph', async () => {
+  it('the wired import seam answers honest typed refusals through the composed graph', async () => {
+    // E5-T05 moved the level: the importer is root-composed (WP5), so the pre-E5
+    // "unwired seam → E_CAPABILITY" law no longer applies at the graph — a request
+    // without a bytes transport gets the adapter's typed refusal instead. Truly
+    // unwired seams still refuse E_CAPABILITY (service-level law, proven in
+    // system-prefs-portability.test.ts).
     const g = await makeRuntime();
     const cid = testId(90_004);
     g.runtime.dispatch(
@@ -117,7 +122,7 @@ describe('E3-APP runtime — post-boot composition law', () => {
     const terminal = await g.runtime.wire.terminalOf(cid);
     expect(terminal.result.ok).toBe(false);
     if (terminal.result.ok) return;
-    expect(terminal.result.error.code).toBe('E_CAPABILITY');
+    expect(terminal.result.error.code).toBe('E_FORMAT_UNKNOWN'); // 'import-bytes'
     await g.engine.close();
   });
 });

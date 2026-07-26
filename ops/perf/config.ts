@@ -105,6 +105,11 @@ export const BUDGETS = {
   /** EES §6 ExportRendererPort bench / §12 exporters DoD: 100k-tab export
    *  streams ≤ 60s worst. Observation row until E8-T15 hardening. */
   exportRenderMs: 60_000,
+  /** HOUSE-DECLARED (no EES §6 ImporterPort latency row exists — §6 carries
+   *  only the §5 audit row for imports; E5-T06 owns the preview <2s surface
+   *  law): one 10k-class file previews (detect + parse + canon stamp) ≤ 5s.
+   *  Observation row; provenance recorded in docs/adr-notes/e5-importers.md. */
+  importParseMs: 5_000,
 } as const;
 
 /**

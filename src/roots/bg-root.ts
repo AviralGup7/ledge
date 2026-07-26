@@ -47,6 +47,7 @@ import {
   createEngineModelSource,
   createExportersAdapter,
 } from '@/infrastructure/exporters/index.js';
+import { createImportersAdapter } from '@/infrastructure/importers/index.js';
 import { computeContractHash } from '@/application/contracts/index.js';
 import { createSnapshotsAdapter } from '@/infrastructure/snapshots/index.js';
 import { createDexieStorageEngine, type DexieEngineDeps } from '@/infrastructure/storage/index.js';
@@ -313,6 +314,9 @@ const buildRuntime = (
       now,
       build: computeContractHash(),
     });
+  // E5-T05: the importer family is root-wired (pure parsers + preview stash;
+  // frozen C20/C21 contracts; ADR-044 two-phase law).
+  const importer = deps.importer ?? createImportersAdapter({ ids, now });
   const ledger = createIntentLedger({ engine: storage, journal });
   const services = createServices({
     engine: storage,
@@ -337,7 +341,7 @@ const buildRuntime = (
             scheduler: PLATFORM_SCHEDULER,
           }),
         }),
-    ...(deps.importer !== undefined ? { importer: deps.importer } : {}),
+    importer,
     exporter,
     search: searchRank,
   });

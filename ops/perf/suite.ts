@@ -23,6 +23,7 @@ import { storageScenarios } from './scenarios/storage.js';
 import { ingestScenarios } from './scenarios/ingest.js';
 import { searchScenarios } from './scenarios/search.js';
 import { exportScenarios } from './scenarios/export.js';
+import { importScenarios } from './scenarios/import.js';
 
 /** Finding string precision (display constant). */
 const FINDING_DECIMALS = 2;
@@ -86,6 +87,9 @@ const runBackend = async (
     t0 = Date.now();
     out.push(...(await exportScenarios(createBackendSession(name), scale, cfg)));
     perfTraceWall(`${name} export @${scale}`, t0);
+    t0 = Date.now();
+    out.push(...(await importScenarios(createBackendSession(name), scale, cfg)));
+    perfTraceWall(`${name} import @${scale}`, t0);
   }
   return out;
 };

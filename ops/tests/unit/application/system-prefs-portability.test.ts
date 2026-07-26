@@ -17,6 +17,8 @@ import {
   createExportersAdapter,
   type ExportersAdapter,
 } from '@/infrastructure/exporters/index.js';
+import { createImportersAdapter } from '@/infrastructure/importers/index.js';
+import { canonicalize } from '@/shared-kernel/canon/index.js';
 
 const FAKE_IMPORTER: ImporterPort = {
   preview: () =>
@@ -360,5 +362,139 @@ describe('E5-T03 export — the wired render pipeline rides the service', () => 
     if (r.ok) return;
     expect(r.error.code).toBe('E_DOMAIN_LEGALITY');
     expect((await h.events()).some((e) => e.type === 'ExportCompleted')).toBe(false);
+  });
+});
+
+describe('E5-T05 import — the wired two-phase pipeline rides the service', () => {
+  const NOW_I = 1_800_000_000_000;
+  /** One group: tracker-param dupe pair + one distinct tab + one quarantined scheme. */
+  const ONETAB_TEXT = [
+    'https://import-one.test/report/dup-9?utm_source=newsletter | First copy',
+    'https://import-one.test/report/dup-9 | Second copy',
+    'https://import-two.test/notes/solo-3 | Solo distinct',
+    'javascript:alert(1) | Injected script scheme',
+  ].join('\n');
+
+  const wiredImport = async () => {
+    const importer = createImportersAdapter({ ids: platformIds, now: () => NOW_I });
+    const h = await makeServices({ importer });
+    return { h, importer };
+  };
+  const previewInput = {
+    fileMeta: { name: 'onetab.txt', size: ONETAB_TEXT.length },
+    bytesRef: { kind: 'text' as const, text: ONETAB_TEXT },
+  };
+
+  it('importPreview journals ImportPreviewed with the real parser census', async () => {
+    const { h } = await wiredImport();
+    const out = await mustOk(h.services.portability.importPreview(previewInput, h.ctxOf(41).ctx));
+    const evs = await h.events();
+    expect(evs.length).toBe(1);
+    const previewed = evs[0];
+    expect(previewed?.type).toBe('ImportPreviewed');
+    const payload = previewed?.payload as { previewId: string; modelSummary: string };
+    expect(payload.previewId).toBe(out.previewId);
+    expect(payload.modelSummary).toBe('onetab:m1:t3:r1:d1');
+    // Plans-not-truth holds through the real parser too: nothing materialized.
+    expect((await h.rows('missions')).length).toBe(0);
+  });
+
+  it('importCommit journals ImportCommitted — batchId := previewId, sealed manifest, undo atom', async () => {
+    const { h } = await wiredImport();
+    const preview = await mustOk(
+      h.services.portability.importPreview(previewInput, h.ctxOf(42).ctx),
+    );
+    const out = await mustOk(
+      h.services.portability.importCommit(
+        { previewId: preview.previewId, dedupeMode: 'skip' },
+        h.ctxOf(43).ctx,
+      ),
+    );
+    expect(out.batchId).toBe(preview.previewId); // the idempotency derive (C21)
+    expect(out.imported).toBe(2); // dupe skipped; reject never reached the plan
+    expect(out.dupes).toBe(1);
+    expect(out.rejects).toBe(1);
+
+    const committed = (await h.events()).find((e) => e.type === 'ImportCommitted');
+    const payload = committed?.payload as {
+      batchId: string;
+      source: string;
+      dupesMode: string;
+      canonRulesV: number;
+      batchManifestRef: {
+        missions: {
+          missionId: string;
+          name: string;
+          tabIds: string[];
+          tabs: { ledgeTabId: string; url: string; urlCanonHash: string }[];
+        }[];
+      };
+    };
+    expect(payload.batchId).toBe(preview.previewId);
+    expect(payload.source).toBe('onetab');
+    expect(payload.dupesMode).toBe('skip');
+    expect(payload.canonRulesV).toBe(1);
+    // Referential probe: every manifest tabId exists in the parked materialization,
+    // and the canon stamps survive the trip (urlCanon rides as urlCanonHash).
+    const manifest = payload.batchManifestRef.missions[0];
+    expect(manifest?.name).toBe(''); // onetab groups arrive unnamed
+    expect(manifest?.tabIds.length).toBe(2);
+    expect(manifest?.tabs.map((t) => t.url)).toEqual([
+      'https://import-one.test/report/dup-9?utm_source=newsletter',
+      'https://import-two.test/notes/solo-3',
+    ]);
+    for (const t of manifest?.tabs ?? []) {
+      expect(t.urlCanonHash).toBe(canonicalize(t.url).canonForm);
+      expect(t.ledgeTabId.length).toBeGreaterThan(0);
+    }
+    const missions = (await h.rows('missions')).filter((m) => m['namedBy'] === 'import');
+    expect(missions.length).toBe(1);
+    expect(missions[0]?.['missionId']).toBe(payload.batchManifestRef.missions[0]?.missionId);
+
+    // R11: ONE undo atom covers the batch; the hinge wrote it next to the event.
+    const undoRow = await h.row('meta', 'undoStack');
+    const stack = Array.isArray(undoRow?.['value']) ? undoRow['value'] : [];
+    const atom = stack.at(-1) as { kind: string; label: string; payload: { batchId: string } };
+    expect(atom.kind).toBe('import-undo');
+    expect(atom.label).toBe('msg.undo.imported');
+    expect(atom.payload.batchId).toBe(preview.previewId);
+  });
+
+  it('a double commit keeps the batchId stable (the C21 idempotency key) per invocation', async () => {
+    const { h } = await wiredImport();
+    const preview = await mustOk(
+      h.services.portability.importPreview(previewInput, h.ctxOf(44).ctx),
+    );
+    const first = await mustOk(
+      h.services.portability.importCommit(
+        { previewId: preview.previewId, dedupeMode: 'skip' },
+        h.ctxOf(45).ctx,
+      ),
+    );
+    const second = await mustOk(
+      h.services.portability.importCommit(
+        { previewId: preview.previewId, dedupeMode: 'skip' },
+        h.ctxOf(46).ctx,
+      ),
+    );
+    // C21 "idempotent by previewId-derived batchId": the adapter's identity derive
+    // makes the idempotency key stable across replays — consumers dedupe by it.
+    expect(second.batchId).toBe(first.batchId);
+    expect(second.batchId).toBe(preview.previewId);
+    const committed = (await h.events()).filter((e) => e.type === 'ImportCommitted');
+    expect(committed.length).toBe(2);
+    expect(
+      committed.every((e) => (e.payload as { batchId: string }).batchId === first.batchId),
+    ).toBe(true);
+    // Durable ids are application truth: opKey mints a fresh journal key per
+    // invocation (no key-reuse-with-alien-content), so each invoke mints its own
+    // manifest ids — service-side dedupe-by-batchId is the recorded door
+    // (docs/adr-notes/e5-importers.md [follow-up]).
+    const ids = committed.map((e) =>
+      (
+        e.payload as { batchManifestRef: { missions: { missionId: string }[] } }
+      ).batchManifestRef.missions.map((m) => m.missionId),
+    );
+    expect(ids[1]).not.toEqual(ids[0]);
   });
 });

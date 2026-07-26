@@ -53,6 +53,9 @@ const REQUIRED_ROWS = [
   'ingest.event.latency',
   'search.query',
   'export.render',
+  // E5-T05: one row is sufficient — the family emits parse.<format> rows and the
+  // inventory census below holds every emitted row to the regression/budget law.
+  'import.parse',
 ] as const;
 
 const rowName = (r: ScenarioResult): string => (r.key.split('/')[1] ?? '').split('/')[0] ?? '';
