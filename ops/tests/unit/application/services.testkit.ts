@@ -317,6 +317,8 @@ export interface ServicesHarness {
 export const makeServices = async (
   opts: {
     readonly withIngest?: boolean | undefined;
+    /** Extra projection-frame subscriber (outbox bridging in the integration slice). */
+    readonly onFrame?: ((frame: ViewDeltaFrame) => void) | undefined;
     readonly importer?: ServiceDeps['importer'];
     readonly exporter?: ServiceDeps['exporter'];
   } = {},
@@ -328,7 +330,10 @@ export const makeServices = async (
   const projections = createV1ProjectionEngine({
     engine,
     journal,
-    onDelta: (f) => frames.push(f),
+    onDelta: (f) => {
+      frames.push(f);
+      opts.onFrame?.(f);
+    },
   });
   const fakeTabs = makeFakeTabs();
   const fakeWindows = makeFakeWindows(fakeTabs);
