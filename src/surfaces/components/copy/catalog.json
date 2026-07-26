@@ -76,13 +76,12 @@
       "details": "Details"
     },
     "undo": {
+      "archived": "Back from the Archive.",
       "renamed": "Name restored.",
       "imported": "Import undone.",
       "moved": "Move undone.",
       "merged": "Merge undone.",
       "split": "Split undone.",
-      "unarchived": "Back from the Archive.",
-      "restored": "Restored.",
       "trashed-tab": "Tab restored.",
       "trashed-mission": "Mission restored.",
       "done": "Undone.",

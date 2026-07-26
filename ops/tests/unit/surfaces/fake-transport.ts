@@ -3,7 +3,19 @@
 // tests against the frozen registry) and answers acks through a scriptable
 // responder; streams are emitted into the surface's listener exactly like the
 // outbox's guardedBroadcast does ({v, kind:'stream', name, payload}).
-import { CONTRACT_V } from '@/application/contracts/index.js';
+// E4-FIX-01 (audit F2): the fake is also a BOUNDARY VALIDATOR — every envelope is
+// fail-fast validated against the frozen registry at send time (name resolves,
+// wire-kind parity, payload through validateObject, senderContext in the enum).
+// A shape drift at a call site now throws loudly in the suite that caused it;
+// it can never again pass on a hand-mirrored fixture alone.
+import {
+  CONTRACT_V,
+  MESSAGE_REGISTRY,
+  SENDER_CONTEXTS,
+  validateObject,
+  type SchemaSpec,
+} from '@/application/contracts/index.js';
+import { INTERNAL_COMMANDS, INTERNAL_QUERIES } from '@/application/usecases/handlers.js';
 import type { CidEntropy } from '@/surfaces/components/session/ids.js';
 import type { WireTransport } from '@/surfaces/components/session/client.js';
 
@@ -16,6 +28,47 @@ export interface SentEnvelope {
   readonly payload: unknown;
   readonly contractHash: string;
 }
+
+const INTERNAL_NAMES = new Set<string>([
+  ...INTERNAL_COMMANDS.map((registration) => registration.name),
+  ...INTERNAL_QUERIES.map((registration) => registration.name),
+]);
+
+/** Fail-fast wire-law validation, executed on EVERY send the surface makes through
+ *  the fake. Throws synchronously (never rejects — a rejection would be swallowed
+ *  by the client's E_CAPABILITY resilience and the drift would stay invisible). */
+const assertEnvelopeHonest = (env: SentEnvelope): void => {
+  if (!(SENDER_CONTEXTS as readonly string[]).includes(env.senderContext)) {
+    throw new Error(
+      `fake-transport: senderContext '${env.senderContext}' is not in SENDER_CONTEXTS`,
+    );
+  }
+  const spec = MESSAGE_REGISTRY[env.name];
+  if (spec === undefined || spec.availability !== 'v1') {
+    if (!INTERNAL_NAMES.has(env.name)) {
+      throw new Error(
+        `fake-transport: '${env.name}' is neither a v1 registry name nor a served internal name`,
+      );
+    }
+    return; // Tier-2 internal: served by the SW with its own contracts (no registry spec)
+  }
+  if (spec.kind !== env.kind) {
+    throw new Error(
+      `fake-transport: '${env.name}' sent as '${env.kind}' but the registry declares '${spec.kind}'`,
+    );
+  }
+  const result = validateObject(
+    spec.payload as SchemaSpec,
+    env.payload as Record<string, unknown>,
+    { message: env.name, field: 'payload' },
+    0,
+  );
+  if (!result.ok) {
+    throw new Error(
+      `fake-transport: '${env.name}' payload fails the registry spec (${result.error.code})`,
+    );
+  }
+};
 
 /** Ack-side scripting: return the synchronous dispatch response for an envelope. */
 export type AckResponder = (env: SentEnvelope) => unknown;
@@ -61,6 +114,7 @@ export const createFakeTransport = (): FakeTransport => {
       send: (message) => {
         const env = message as SentEnvelope;
         sent.push(env);
+        assertEnvelopeHonest(env);
         if (failNext !== undefined) {
           const reason = failNext;
           failNext = undefined;

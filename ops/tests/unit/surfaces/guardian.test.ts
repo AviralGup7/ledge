@@ -19,7 +19,7 @@ import {
 const BOOTSTRAP = {
   missions: [
     {
-      missionId: 'm1',
+      missionId: '01HF7YAT001000000000000000',
       name: 'Reading week',
       namedBy: 'user',
       state: 'parked',
@@ -29,7 +29,7 @@ const BOOTSTRAP = {
       tabCount: 3,
     },
     {
-      missionId: 'm2',
+      missionId: '01HF7YB1QFE000000000000000',
       name: 'Trip planning',
       namedBy: 'system',
       state: 'live',
@@ -42,7 +42,7 @@ const BOOTSTRAP = {
   recentlyClosed: [],
   trashCount: 0,
   watermark: 4,
-  settings: { 'favorite.mission.m1': true },
+  settings: { 'favorite.mission.01HF7YAT001000000000000000': true },
   heartbeat: { keptCount: 12, liveRecoverable: 4, asOf: 1_700_000_004_000 },
 };
 
@@ -150,7 +150,9 @@ describe('E4 guardian · boot', () => {
     const missions = section(doc, 'missions');
     expect(missions.textContent).toContain('Reading week');
     expect(missions.textContent).toContain('Trip planning');
-    expect(missions.querySelector('[data-mission-id="m1"] .chip-favorite')).not.toBeNull();
+    expect(
+      missions.querySelector('[data-mission-id="01HF7YAT001000000000000000"] .chip-favorite'),
+    ).not.toBeNull();
     expect(missions.querySelectorAll('.mission-card')).toHaveLength(2);
     unmount();
   });
@@ -228,12 +230,12 @@ describe('E4 guardian · park interactions (R1 two-phase honesty)', () => {
     const pending = section(doc, 'pending');
     expect(pending.querySelector(`[data-cid="${sent.cid}"]`)).not.toBeNull();
     expect(pending.textContent).toContain(copyOf('msg.state.pending'));
-    fake.acknowledge(sent.cid, 'intent-1');
+    fake.acknowledge(sent.cid, '01HF7YCG49W000000000000000');
     await flush();
     expect(mustQuery(pending, `[data-cid="${sent.cid}"]`).getAttribute('data-phase')).toBe(
       'acknowledged',
     );
-    fake.apply(sent.cid, { kept: 'k1' });
+    fake.apply(sent.cid, { kept: '01HF7YC8CTF000000000000000' });
     await flush();
     expect(pending.querySelector(`[data-cid="${sent.cid}"]`)).toBeNull();
     // Applied ⇒ open tabs are re-peeked (post-truth refresh, never optimistic).
@@ -305,13 +307,18 @@ describe('E4 guardian · missions & start', () => {
     const { doc, fake, unmount } = mount();
     await settleBoot(fake);
     const missions = section(doc, 'missions');
-    const card = mustQuery(missions, '[data-mission-id="m1"]');
+    const card = mustQuery(missions, '[data-mission-id="01HF7YAT001000000000000000"]');
     mustQuery(card, '[data-action="resume"]').click();
     await flush();
-    expect(fake.lastOf('ResumeMission').payload).toEqual({ missionId: 'm1', mode: 'full' });
+    expect(fake.lastOf('ResumeMission').payload).toEqual({
+      missionId: '01HF7YAT001000000000000000',
+      mode: 'full',
+    });
     // Live missions do not offer resume.
     expect(
-      mustQuery(missions, '[data-mission-id="m2"]').querySelector('[data-action="resume"]'),
+      mustQuery(missions, '[data-mission-id="01HF7YB1QFE000000000000000"]').querySelector(
+        '[data-action="resume"]',
+      ),
     ).toBeNull();
     unmount();
   });
@@ -341,10 +348,13 @@ describe('E4 guardian · undo & keyboard', () => {
     await flush();
     const undo = fake.lastOf('Undo');
     expect(undo.kind).toBe('command');
-    fake.apply(undo.cid, { undid: 'msg.undo.restored' });
+    // msg.undo.archived is the audit E4-F1 label: emitted by the frozen Domain,
+    // previously missing from the catalog (would have rendered the raw key).
+    fake.apply(undo.cid, { undid: 'msg.undo.archived' });
     await flush();
     const live = mustQuery(doc.body, '[data-live-region]');
-    expect(live.textContent).toBe(copyOf('msg.undo.restored'));
+    expect(live.textContent).toBe(copyOf('msg.undo.archived'));
+    expect(live.textContent).not.toContain('msg.undo.');
     unmount();
   });
 
@@ -413,7 +423,13 @@ describe('E4 guardian · streams', () => {
     fake.emitStream('ViewDelta', {
       view: 'missions',
       watermark: 1,
-      ops: [{ kind: 'upsert', key: 'm9', record: { missionId: 'm9', name: 'X', state: 'parked' } }],
+      ops: [
+        {
+          kind: 'upsert',
+          key: '01HF7YBH6D8000000000000000',
+          record: { missionId: '01HF7YBH6D8000000000000000', name: 'X', state: 'parked' },
+        },
+      ],
     });
     await flush();
     const bootsBefore = fake.countOf('GetBootstrap');
@@ -439,8 +455,13 @@ describe('E4 guardian · streams', () => {
       ops: [
         {
           kind: 'upsert',
-          key: 'm3',
-          record: { missionId: 'm3', name: 'New arrival', state: 'parked', tabCount: 1 },
+          key: '01HF7YB9EYV000000R00000000',
+          record: {
+            missionId: '01HF7YB9EYV000000R00000000',
+            name: 'New arrival',
+            state: 'parked',
+            tabCount: 1,
+          },
         },
       ],
     });
@@ -452,12 +473,18 @@ describe('E4 guardian · streams', () => {
   it('RecoveryAvailable renders the recovery card with severity-driven copy', async () => {
     const { doc, fake, unmount } = mount();
     await settleBoot(fake);
-    fake.emitStream('RecoveryAvailable', { bootReportId: 'b1', severity: 'clean-abnormal' });
+    fake.emitStream('RecoveryAvailable', {
+      bootReportId: '01HF7YBRXWN000000000000000',
+      severity: 'clean-abnormal',
+    });
     await flush();
     const card = mustQuery(doc.body, '[data-card="recovery"]');
     expect(card.getAttribute('data-severity')).toBe('clean-abnormal');
     expect(card.textContent).toContain(copyOf('msg.recovery.updated'));
-    fake.emitStream('RecoveryAvailable', { bootReportId: 'b2', severity: 'loss-risk' });
+    fake.emitStream('RecoveryAvailable', {
+      bootReportId: '01HF7YC0NB200R0R0000000000',
+      severity: 'loss-risk',
+    });
     await flush();
     expect(mustQuery(doc.body, '[data-card="recovery"]').textContent).toContain(
       'Everything is safe',

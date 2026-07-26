@@ -18,7 +18,7 @@ import {
 const BOOTSTRAP = {
   missions: [
     {
-      missionId: 'm1',
+      missionId: '01HF7YAT001000000000000000',
       name: 'Reading week',
       namedBy: 'user',
       state: 'parked',
@@ -26,7 +26,7 @@ const BOOTSTRAP = {
       tabCount: 3,
     },
     {
-      missionId: 'm2',
+      missionId: '01HF7YB1QFE000000000000000',
       name: 'Trip planning',
       namedBy: 'system',
       state: 'archived',
@@ -40,7 +40,7 @@ const BOOTSTRAP = {
   settings: {
     'trash.retentionDays': 30,
     'undo.stackCap': 20,
-    'favorite.mission.m1': true,
+    'favorite.mission.01HF7YAT001000000000000000': true,
   },
   heartbeat: { keptCount: 14, liveRecoverable: 2, asOf: 1_700_000_000_000 },
 };
@@ -182,7 +182,7 @@ describe('E4 quiet · boot & nav', () => {
 describe('E4 quiet · library & detail', () => {
   const DETAIL = {
     mission: {
-      missionId: 'm1',
+      missionId: '01HF7YAT001000000000000000',
       name: 'Reading week',
       namedBy: 'user',
       state: 'parked',
@@ -191,8 +191,8 @@ describe('E4 quiet · library & detail', () => {
     },
     tabs: [
       {
-        tabId: 't1',
-        missionId: 'm1',
+        tabId: '01HF7YCQVR90000R0000000000',
+        missionId: '01HF7YAT001000000000000000',
         url: 'https://papers.example.com/a',
         title: 'Kept paper',
         domain: 'papers.example.com',
@@ -201,8 +201,8 @@ describe('E4 quiet · library & detail', () => {
         lastActiveAt: 2,
       },
       {
-        tabId: 't2',
-        missionId: 'm1',
+        tabId: '01HF7YCZK7P000000000000000',
+        missionId: '01HF7YAT001000000000000000',
         url: 'https://notes.example.com/b',
         title: 'Notes',
         domain: 'notes.example.com',
@@ -212,17 +212,22 @@ describe('E4 quiet · library & detail', () => {
       },
     ],
     artifacts: [
-      { artifactId: 'a1', kind: 'topic', value: 'attention' },
-      { artifactId: 'a2', kind: 'naming', value: 'reading' },
+      { artifactId: '01HF7YDPSMXJ00000000000000', kind: 'topic', value: 'attention' },
+      { artifactId: '01HF7YDYH3A000000000000000', kind: 'naming', value: 'reading' },
     ],
   };
 
   const openDetail = async (h: QuietHarness): Promise<void> => {
     h.answers.set('GetMissionDetail', DETAIL);
     await answerAll(h);
-    mustQuery(content(h.doc), '[data-mission-id="m1"] [data-action="open-detail"]').click();
+    mustQuery(
+      content(h.doc),
+      '[data-mission-id="01HF7YAT001000000000000000"] [data-action="open-detail"]',
+    ).click();
     await answerAll(h);
-    expect(h.fake.lastOf('GetMissionDetail').payload).toEqual({ missionId: 'm1' });
+    expect(h.fake.lastOf('GetMissionDetail').payload).toEqual({
+      missionId: '01HF7YAT001000000000000000',
+    });
   };
 
   it('detail renders mission, topics (topic-kind artifacts only) and member tabs', async () => {
@@ -241,20 +246,27 @@ describe('E4 quiet · library & detail', () => {
     await openDetail(h);
     mustQuery(content(h.doc), '[data-action="resume"]').click();
     await flush();
-    expect(h.fake.lastOf('ResumeMission').payload).toEqual({ missionId: 'm1', mode: 'full' });
+    expect(h.fake.lastOf('ResumeMission').payload).toEqual({
+      missionId: '01HF7YAT001000000000000000',
+      mode: 'full',
+    });
     // Applied ⇒ the after-hook returns to the library; the next flow starts there.
-    h.fake.apply(h.fake.lastOf('ResumeMission').cid, { missionId: 'm1' });
+    h.fake.apply(h.fake.lastOf('ResumeMission').cid, { missionId: '01HF7YAT001000000000000000' });
     await answerAll(h);
     await openDetail(h);
     mustQuery(content(h.doc), '[data-action="archive"]').click();
     await flush();
-    expect(h.fake.lastOf('ArchiveMission').payload).toEqual({ missionId: 'm1' });
+    expect(h.fake.lastOf('ArchiveMission').payload).toEqual({
+      missionId: '01HF7YAT001000000000000000',
+    });
     h.fake.apply(h.fake.lastOf('ArchiveMission').cid, { archived: true });
     await answerAll(h);
     await openDetail(h);
     mustQuery(content(h.doc), '[data-action="conclude"]').click();
     await flush();
-    expect(h.fake.lastOf('ConcludeMission').payload).toEqual({ missionId: 'm1' });
+    expect(h.fake.lastOf('ConcludeMission').payload).toEqual({
+      missionId: '01HF7YAT001000000000000000',
+    });
     h.unmount();
   });
 
@@ -269,7 +281,10 @@ describe('E4 quiet · library & detail', () => {
     expect(lane.textContent).toContain(copyOf('msg.hint.confirm-delete'));
     mustQuery(lane, '[data-action="confirm"]').click();
     await flush();
-    expect(h.fake.lastOf('DeleteEntity').payload).toEqual({ kind: 'mission', id: 'm1' });
+    expect(h.fake.lastOf('DeleteEntity').payload).toEqual({
+      kind: 'mission',
+      id: '01HF7YAT001000000000000000',
+    });
     h.unmount();
   });
 
@@ -293,7 +308,7 @@ describe('E4 quiet · library & detail', () => {
     await flush();
     expect(h.fake.lastOf('SetFavorite').payload).toEqual({
       entityKind: 'mission',
-      id: 'm1',
+      id: '01HF7YAT001000000000000000',
       favor: false,
     });
     h.unmount();
@@ -308,8 +323,8 @@ describe('E4 quiet · library & detail', () => {
     mustQuery(c, '[data-action="correct-topic"]').click();
     await flush();
     const sent = h.fake.lastOf('CorrectTopic');
-    expect(sent.payload).toEqual({ subjectId: 'm1', value: 'focus' });
-    h.fake.apply(sent.cid, { artifactId: 'a9' });
+    expect(sent.payload).toEqual({ subjectId: '01HF7YAT001000000000000000', value: 'focus' });
+    h.fake.apply(sent.cid, { artifactId: '01HF7YE68JQ000000000000000' });
     await flush();
     expect(mustQuery(h.doc.body, '[data-live-region]').textContent).toBe(
       copyOf('msg.dialog.topic-saved'),
@@ -331,9 +346,14 @@ describe('E4 quiet · library & detail', () => {
   it('list-level conclude and close-detail return to the library', async () => {
     const h = mount();
     await answerAll(h);
-    mustQuery(content(h.doc), '[data-mission-id="m2"] [data-action="conclude"]').click();
+    mustQuery(
+      content(h.doc),
+      '[data-mission-id="01HF7YB1QFE000000000000000"] [data-action="conclude"]',
+    ).click();
     await flush();
-    expect(h.fake.lastOf('ConcludeMission').payload).toEqual({ missionId: 'm2' });
+    expect(h.fake.lastOf('ConcludeMission').payload).toEqual({
+      missionId: '01HF7YB1QFE000000000000000',
+    });
     await openDetail(h);
     mustQuery(content(h.doc), '[data-action="detail-close"]').click();
     await answerAll(h);
@@ -346,14 +366,24 @@ describe('E4 quiet · closed & trash', () => {
   it('recently closed restores ride RestoreRecentlyClosed with the tab id array', async () => {
     const h = mount();
     h.answers.set('GetRecentlyClosed', {
-      entries: [{ entryId: 'e1', tabId: 't9', title: 'Gone tab', domain: 'gone.example.com' }],
+      entries: [
+        {
+          entryId: '01HF7YENQGH000000000000000',
+          tabId: '01HF7YDF25G000000000000000',
+          title: 'Gone tab',
+          domain: 'gone.example.com',
+        },
+      ],
     });
     await navTo(h, 'closed');
     const c = content(h.doc);
     expect(c.textContent).toContain('Gone tab');
     mustQuery(c, '[data-action="restore-closed"]').click();
     await flush();
-    expect(h.fake.lastOf('RestoreRecentlyClosed').payload).toEqual({ ids: ['t9'], target: 'new' });
+    expect(h.fake.lastOf('RestoreRecentlyClosed').payload).toEqual({
+      ids: ['01HF7YDF25G000000000000000'],
+      target: 'new',
+    });
     h.unmount();
   });
 
@@ -369,19 +399,31 @@ describe('E4 quiet · closed & trash', () => {
   it('trash rows restore via RestoreFromTrash with entity kind + id', async () => {
     const h = mount();
     h.answers.set('GetTrash', {
-      entries: [{ kind: 'mission', id: 'm7', displayName: 'Dead project', deletedAt: 5 }],
+      entries: [
+        {
+          kind: 'mission',
+          id: '01HF7YFMNC5000000000000000',
+          displayName: 'Dead project',
+          deletedAt: 5,
+        },
+      ],
     });
     await navTo(h, 'trash');
     mustQuery(content(h.doc), '[data-action="restore-trash"]').click();
     await flush();
-    expect(h.fake.lastOf('RestoreFromTrash').payload).toEqual({ kind: 'mission', id: 'm7' });
+    expect(h.fake.lastOf('RestoreFromTrash').payload).toEqual({
+      kind: 'mission',
+      id: '01HF7YFMNC5000000000000000',
+    });
     h.unmount();
   });
 
   it('emptying the trash is a two-step confirm riding EmptyTrash{confirm:true}', async () => {
     const h = mount();
     h.answers.set('GetTrash', {
-      entries: [{ kind: 'tab', id: 't1', displayName: 'Dead tab', deletedAt: 5 }],
+      entries: [
+        { kind: 'tab', id: '01HF7YCQVR90000R0000000000', displayName: 'Dead tab', deletedAt: 5 },
+      ],
     });
     await navTo(h, 'trash');
     const c = content(h.doc);
@@ -399,7 +441,9 @@ describe('E4 quiet · closed & trash', () => {
   it('cancelling the purge re-renders the trash list with no command sent', async () => {
     const h = mount();
     h.answers.set('GetTrash', {
-      entries: [{ kind: 'tab', id: 't1', displayName: 'Dead tab', deletedAt: 5 }],
+      entries: [
+        { kind: 'tab', id: '01HF7YCQVR90000R0000000000', displayName: 'Dead tab', deletedAt: 5 },
+      ],
     });
     await navTo(h, 'trash');
     const c = content(h.doc);
@@ -500,13 +544,13 @@ describe('E4 quiet · import & export', () => {
   it('ImportReady on the section renders the commit lane; commit rides ImportCommit', async () => {
     const h = mount();
     await navTo(h, 'import-export');
-    h.fake.emitStream('ImportReady', { previewId: 'p1' });
+    h.fake.emitStream('ImportReady', { previewId: '01HF7YEXEZY000000000000000' });
     await flush();
     const lane = mustQuery(h.doc.body, '[data-lane="import-ready"]');
     mustQuery(lane, '[data-action="import-commit"]').click();
     await flush();
     const sent = h.fake.lastOf('ImportCommit');
-    expect(sent.payload).toEqual({ previewId: 'p1', dedupeMode: 'skip' });
+    expect(sent.payload).toEqual({ previewId: '01HF7YEXEZY000000000000000', dedupeMode: 'skip' });
     h.fake.apply(sent.cid, { imported: 10, dupes: 3 });
     await flush();
     expect(mustQuery(h.doc.body, '[data-live-region]').textContent).toBe(
@@ -518,7 +562,7 @@ describe('E4 quiet · import & export', () => {
   it('ImportReady off the section stays silent (no cross-section lanes)', async () => {
     const h = mount();
     await answerAll(h); // sitting on library
-    h.fake.emitStream('ImportReady', { previewId: 'p2' });
+    h.fake.emitStream('ImportReady', { previewId: '01HF7YF56EB000000000000000' });
     await flush();
     expect(h.doc.body.querySelector('[data-lane="import-ready"]')).toBeNull();
     h.unmount();
@@ -564,16 +608,20 @@ describe('E4 quiet · rescue console', () => {
     await flush();
     const scan = h.fake.lastOf('RescueScanNow');
     expect(scan.payload).toEqual({ mode: 'tail' });
-    h.fake.apply(scan.cid, { reportId: 'r-1' });
+    h.fake.apply(scan.cid, { reportId: '01HF7YFCXXR000000000000000' });
     await flush();
-    expect(mustQuery(h.doc.body, '[data-report="scan"]').textContent).toContain('r-1');
+    expect(mustQuery(h.doc.body, '[data-report="scan"]').textContent).toContain(
+      '01HF7YFCXXR000000000000000',
+    );
     mustQuery(c, '[data-action="repair-rebuild"]').click();
     await flush();
     expect(h.fake.lastOf('RepairRebuild').payload).toEqual({ scope: 'all' });
     mustQuery(c, '[data-action="export-diagnostics"]').click();
     await flush();
     expect(h.fake.lastOf('ExportDiagnostics').payload).toEqual({});
-    h.fake.apply(h.fake.lastOf('ExportDiagnostics').cid, { manifestId: 'd1' });
+    h.fake.apply(h.fake.lastOf('ExportDiagnostics').cid, {
+      manifestId: '01HF7YEE014000000000000000',
+    });
     await flush();
     expect(mustQuery(h.doc.body, '[data-live-region]').textContent).toBe(
       copyOf('msg.dialog.diagnostics-done'),
@@ -644,7 +692,10 @@ describe('E4 quiet · streams, undo & lifecycle', () => {
   it('RecoveryAvailable shows the severity-driven recovery banner', async () => {
     const h = mount();
     await answerAll(h);
-    h.fake.emitStream('RecoveryAvailable', { bootReportId: 'b1', severity: 'loss-risk' });
+    h.fake.emitStream('RecoveryAvailable', {
+      bootReportId: '01HF7YBRXWN000000000000000',
+      severity: 'loss-risk',
+    });
     await flush();
     expect(mustQuery(h.doc.body, '[data-banner="recovery"]').textContent).toContain(
       'Everything is safe',

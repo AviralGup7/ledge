@@ -109,11 +109,19 @@ pair in-banner. **Triangulation gate:** `contract-compat.test.ts` "error copy
 triangulation" re-checks those pairs against `error.catalog.ts` + catalog, so
 this class of divergence now fails in the surface lane before CI sees it.
 
-### 3.2 Undo labels are currency-constrained
+### 3.2 Undo labels are currency-constrained — and the enumeration is emitter-derived
 
 Surfaces announce undo results via `copyOf(result.undid)` where SW returns a
-`msg.undo.*` key (E3 2.3); the compat suite enumerates the full label set so a
-hub-emitted label can never 404 into raw-key display.
+`msg.undo.*` key (E3 2.3). **The first E4 draft pinned the label set with a
+hand-written list that mirrored the catalog, not the emitters — and the
+verification audit (E4-F1) caught the consequence: the frozen Domain emits
+`msg.undo.archived` (`transitions.ts`) while the catalog carried orphans
+(`unarchived`, `restored`) instead, so undo-of-archive would have rendered the
+raw key.** Fixed in E4-FIX-01: the catalog now carries `undo.archived`, the
+orphans are gone, and the label law is **emitter-derived** — the copy suite
+scans `src/**` production source for `'msg.undo.*'` literals and requires every
+emitted label to resolve, plus every catalog undo label to have an emitter or a
+surface consumer (both directions; the hand-mirrored class cannot recur).
 
 ### 3.3 The `no-raw-copy` eslint law held zero exceptions
 
@@ -137,8 +145,16 @@ frozen registry validator. It caught — at test time, before any runtime —
    Fixed: `formats: ['json', 'html', 'md']` — one-button all-in export.
 
 Each would have been rejected by the SW boundary validator at runtime
-(`E_OUTPUT_MALFORMED`). This suite now guards the class automatically — any
-future payload drift fails at `pnpm test`.
+(`E_OUTPUT_MALFORMED`). The guard posture is precise (amended after audit
+E4-F2): the compat suite validates **transcribed** payload fixtures (scan →
+fixture-exists → fixture validates), which catches fixture drift but not a
+call-site-only shape edit. **E4-FIX-01 closed that gap at the boundary: the
+fake transport now fail-fast validates every envelope any surface test sends —
+name resolution, wire-kind parity, `senderContext` enum, and the payload
+through `validateObject` — and surface-suite fixtures carry ULID-honest ids, so
+a shape drift at any executed call site throws in the suite that caused it.**
+The boundary validator is self-pinned by `fake-transport.test.ts` (a validator
+that stops throwing fails there).
 
 ---
 
@@ -167,7 +183,9 @@ ambient-DOM reach).
 answers acks through a scriptable responder; streams emit exactly like the
 outbox's broadcast shape — sequences follow **real wire order**: send → ack →
 `CommandAck`(optional) → terminal. Nothing about the SW is mocked by contract;
-only the transport is faked.
+only the transport is faked. Since E4-FIX-01 the fake **also** plays the SW's
+boundary-validator role (fail-fast, §4 above) — the suites therefore verify the
+surface against the same shapes the runtime enforces.
 
 ---
 
@@ -225,6 +243,23 @@ that ships the entry"; E4 ships it. Measured: 6.0 KB gzip against the 80 KB
 budget (all surface chunks incl. shared widgets).
 
 ---
+
+## Post-audit fix register (E4-FIX-01 · 2026-07-26)
+
+The independent E4 verification audit (`E4-VERIFICATION-AUDIT.md`, workspace)
+returned two findings; both fixed in this milestone, no silent edits:
+
+- **E4-F1 (Medium):** `msg.undo.archived` 404 → catalog key added, orphans
+  pruned, label law became emitter-derived (§3.2). The guardian suite now
+  narrates undo-of-archive end-to-end and asserts the live region never shows
+  a raw key.
+- **E4-F2 (Low):** payload guard was transcription-backed → fake transport
+  became a fail-fast boundary validator (§4/§5.3). The ratchet immediately
+  re-caught the exact trap class it was built for (shape-invalid fixture ids
+  flowing through real call sites); fixtures are now ULID-honest, which the
+  boundary enforces permanently.
+- **E4-O1 (trivial):** report line-count figures are approximations; no code
+  action, noted for the report's next revision.
 
 ## Consequences
 

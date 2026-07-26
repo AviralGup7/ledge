@@ -61,24 +61,24 @@ const mount = (): OverlayHarness => {
 const RESULTS = {
   results: [
     {
-      tabId: 't1',
-      missionId: 'm1',
+      tabId: '01HF7YCQVR90000R0000000000',
+      missionId: '01HF7YAT001000000000000000',
       title: 'Kept paper',
       url: 'https://papers.example.com/a',
       domain: 'papers.example.com',
       state: 'kept',
     },
     {
-      tabId: 't2',
-      missionId: 'm2',
+      tabId: '01HF7YCZK7P000000000000000',
+      missionId: '01HF7YB1QFE000000000000000',
       title: 'Open draft',
       url: 'https://drafts.example.com/b',
       domain: 'drafts.example.com',
       state: 'live',
     },
     {
-      tabId: 't3',
-      missionId: 'm1',
+      tabId: '01HF7YD7AP30000S0000000R00',
+      missionId: '01HF7YAT001000000000000000',
       title: 'Old thread',
       url: 'https://threads.example.com/c',
       domain: 'threads.example.com',
@@ -195,9 +195,12 @@ describe('E4 overlay · activation (the one reflex)', () => {
     await flush();
     const sent = fake.lastOf('ResumeMission');
     expect(sent.kind).toBe('command');
-    expect(sent.payload).toEqual({ missionId: 'm1', mode: 'full' });
+    expect(sent.payload).toEqual({ missionId: '01HF7YAT001000000000000000', mode: 'full' });
     expect(closes()).toBe(0); // acknowledged is not applied — still open
-    fake.apply(sent.cid, { missionId: 'm1', restoredTabIds: ['t1'] });
+    fake.apply(sent.cid, {
+      missionId: '01HF7YAT001000000000000000',
+      restoredTabIds: ['01HF7YCQVR90000R0000000000'],
+    });
     await flush();
     expect(closes()).toBe(1);
     unmount();

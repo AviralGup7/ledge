@@ -9,7 +9,9 @@ import { copyOf, hasCopy } from '@/surfaces/components/copy/copy.js';
 import catalog from '@/surfaces/components/copy/catalog.json';
 
 const SURFACES_ROOT = 'src/surfaces';
+const SRC_ROOT = 'src';
 const COPY_KEY_PATTERN = /copyOf\(\s*'([^']+)'/g;
+const UNDO_LABEL_PATTERN = /'msg\.undo\.[a-z-]+'/g;
 
 const walkTs = (dir: string, out: string[] = []): readonly string[] => {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -39,6 +41,21 @@ const flattenLeaves = (node: unknown, prefix: string, out: string[] = []): reado
     out.push(prefix.slice(0, -1));
   }
   return out;
+};
+
+/** Every 'msg.undo.*' literal under a source root (production files only — tests are
+ *  neither emitters nor consumers). The emitter set is SCAN-DERIVED by law: a
+ *  hand-mirrored list is what let msg.undo.archived 404 to a raw key at audit (E4-F1). */
+const undoLabelsUnder = (root: string): ReadonlySet<string> => {
+  const labels = new Set<string>();
+  for (const file of walkTs(root)) {
+    if (file.endsWith('.test.ts')) continue;
+    const source = readFileSync(file, 'utf8');
+    for (const match of source.matchAll(UNDO_LABEL_PATTERN)) {
+      labels.add(match[0].slice(1, -1));
+    }
+  }
+  return labels;
 };
 
 describe('E4 copy · interpolation', () => {
@@ -141,20 +158,20 @@ describe('E4 copy · code↔catalog agreement (the load-bearing law)', () => {
     for (const key of fallbacks) expect(hasCopy(key), key).toBe(true);
   });
 
-  it('every undo label the hub may return (msg.undo.*) exists', () => {
-    const undoLabels = [
-      'msg.undo.renamed',
-      'msg.undo.imported',
-      'msg.undo.moved',
-      'msg.undo.merged',
-      'msg.undo.split',
-      'msg.undo.unarchived',
-      'msg.undo.restored',
-      'msg.undo.trashed-tab',
-      'msg.undo.trashed-mission',
-      'msg.undo.done',
-      'msg.undo.empty',
-    ];
-    for (const key of undoLabels) expect(hasCopy(key), key).toBe(true);
+  it('every msg.undo.* label the SW can actually emit resolves in the catalog (emitter-derived; the E4-F1 gate)', () => {
+    const emitted = undoLabelsUnder(SRC_ROOT);
+    // Regression pins — the scan can never pass green-by-absence:
+    expect(emitted.has('msg.undo.archived')).toBe(true);
+    expect(emitted.size).toBeGreaterThan(5);
+    const missing = [...emitted].filter((key) => !hasCopy(key));
+    expect(missing).toEqual([]);
+  });
+
+  it('every catalog undo label has an emitter or a surface consumer (no orphan narration)', () => {
+    const reachable = new Set([...undoLabelsUnder(SRC_ROOT), ...undoLabelsUnder(SURFACES_ROOT)]);
+    const catalogUndo = flattenLeaves(catalog, '').filter((key) => key.startsWith('msg.undo.'));
+    expect(catalogUndo.length).toBeGreaterThan(5); // sanity: the flatten actually found them
+    const orphans = catalogUndo.filter((key) => !reachable.has(key));
+    expect(orphans).toEqual([]);
   });
 });
