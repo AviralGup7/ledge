@@ -21,6 +21,7 @@ import { lifecycleScenarios } from './scenarios/lifecycle.js';
 import { maintenanceScenarios } from './scenarios/maintenance.js';
 import { storageScenarios } from './scenarios/storage.js';
 import { ingestScenarios } from './scenarios/ingest.js';
+import { searchScenarios } from './scenarios/search.js';
 
 /** Finding string precision (display constant). */
 const FINDING_DECIMALS = 2;
@@ -78,6 +79,9 @@ const runBackend = async (
       out.push(...(await ingestScenarios(createBackendSession(name), scale, cfg)));
       perfTraceWall(`${name} ingest @${scale}`, t0);
     }
+    t0 = Date.now();
+    out.push(...(await searchScenarios(createBackendSession(name), scale, cfg)));
+    perfTraceWall(`${name} search @${scale}`, t0);
   }
   return out;
 };

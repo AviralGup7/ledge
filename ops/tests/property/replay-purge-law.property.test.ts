@@ -232,6 +232,7 @@ const snapshotAll = async (h: ProjectionHarness): Promise<string> =>
   stableStringify({
     missions: shelfCanon(await storeSnapshot(h, 'missions')),
     recently_closed: shelfCanon(await storeSnapshot(h, 'recently_closed')),
+    search_index: shelfCanon(await storeSnapshot(h, 'search_index')),
     sessions: shelfCanon(await storeSnapshot(h, 'sessions')),
     tabs: shelfCanon(await storeSnapshot(h, 'tabs')),
   });
@@ -248,6 +249,7 @@ const replayFrames = (frames: readonly ViewDeltaFrame[]): string => {
     recentlyClosed: new Map(),
     sessions: new Map(),
     tabs: new Map(),
+    searchIndex: new Map(),
   };
   // Mirror of the engine's patch law (engine.ts: patch re-adds the store pk), pk naming
   // per projector declaration (ProjectorDef.keyField; sessions upsert carries its
@@ -259,7 +261,9 @@ const replayFrames = (frames: readonly ViewDeltaFrame[]): string => {
         ? 'ledgeTabId'
         : view === 'sessions'
           ? 'snapshotId'
-          : 'entryId';
+          : view === 'searchIndex'
+            ? 'token'
+            : 'entryId';
   for (const frame of frames) {
     const store = stores[frame.view];
     for (const op of frame.ops) {
@@ -276,6 +280,7 @@ const replayFrames = (frames: readonly ViewDeltaFrame[]): string => {
     recently_closed: shelfCanon([...stores.recentlyClosed.values()]),
     sessions: shelfCanon([...stores.sessions.values()]),
     tabs: shelfCanon([...stores.tabs.values()]),
+    search_index: shelfCanon([...stores.searchIndex.values()]),
   });
 };
 

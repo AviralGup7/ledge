@@ -99,7 +99,7 @@ export const seedJournal = async (
 
 export const storeSnapshot = async (
   h: ProjectionHarness,
-  store: 'missions' | 'recently_closed' | 'sessions' | 'tabs',
+  store: 'missions' | 'recently_closed' | 'sessions' | 'tabs' | 'search_index',
 ): Promise<readonly StoredRecord[]> => {
   const r = await h.engine.txn([store], 'readonly', (tx) =>
     tx.table<StoredRecord>(store).toArray(),
@@ -113,6 +113,7 @@ export const storeSnapshot = async (
         Number(a['partIndex'] ?? 0) - Number(b['partIndex'] ?? 0),
     );
   }
-  const pk = store === 'missions' ? 'missionId' : 'entryId';
+  // E5-T01: search_index's pk is the term/registry/stats key ('token').
+  const pk = store === 'missions' ? 'missionId' : store === 'search_index' ? 'token' : 'entryId';
   return [...r.value].sort((a, b) => String(a[pk] ?? '').localeCompare(String(b[pk] ?? '')));
 };

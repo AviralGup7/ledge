@@ -14,8 +14,12 @@ import type { LedgeError, Result } from '@/shared-kernel/result/index.js';
 
 /** v1 view surface (register per view; grows as use-cases land E3+).
  *  E3-APP: 'tabs' joins — per-tab lifecycle truth (LIVE|KEPT|TRASH) is the read
- *  foundation of C7/C10/C15/C16 + R10 heartbeat semantics. */
-export type ViewName = 'missions' | 'recentlyClosed' | 'sessions' | 'tabs';
+ *  foundation of C7/C10/C15/C16 + R10 heartbeat semantics.
+ *  E5-T01: 'searchIndex' joins — ENGINE-INTERNAL view (the §2.11 search index as a
+ *  rebuildable projection). It is deliberately NOT in the ADR-010 wire window:
+ *  the outbox gates ViewDelta publication to the four wire views (surfaces never
+ *  see index frames). */
+export type ViewName = 'missions' | 'recentlyClosed' | 'sessions' | 'tabs' | 'searchIndex';
 
 /** §2.10 watermark: highest APPLIED (seq, batchIndex) per (view, device). */
 export type Watermark = {

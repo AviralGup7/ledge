@@ -321,6 +321,7 @@ export const makeServices = async (
     readonly onFrame?: ((frame: ViewDeltaFrame) => void) | undefined;
     readonly importer?: ServiceDeps['importer'];
     readonly exporter?: ServiceDeps['exporter'];
+    readonly search?: ServiceDeps['search'];
   } = {},
 ): Promise<ServicesHarness> => {
   const engine = await openEngine();
@@ -361,6 +362,7 @@ export const makeServices = async (
     ...(opts.withIngest === true ? { ingest: makeFakeIngest() } : {}),
     ...(opts.importer !== undefined ? { importer: opts.importer } : {}),
     ...(opts.exporter !== undefined ? { exporter: opts.exporter } : {}),
+    ...(opts.search !== undefined ? { search: opts.search } : {}),
   });
 
   let seedSeq = 0;

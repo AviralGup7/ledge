@@ -10,6 +10,7 @@ import type { StorageEnginePort } from '@/application/ports/storage-engine.port.
 import type { TabsPort } from '@/application/ports/tabs.port.js';
 import type { WindowsPort } from '@/application/ports/windows.port.js';
 import type { ImporterPort, ExporterPort } from '@/application/ports/import-export.port.js';
+import type { SearchRankPort } from '@/application/ports/search.port.js';
 import type { CancelToken } from '@/application/hub/dispatch/cancellation.js';
 import type { ProgressEmitter } from '@/application/hub/dispatch/progress.js';
 import type { IngestHub } from '@/application/hub/ingest/types.js';
@@ -34,6 +35,8 @@ export interface ServiceDeps {
   /** Portability seams (E5 importers/exporters families; undefined ⇒ E_CAPABILITY). */
   readonly importer?: ImporterPort | undefined;
   readonly exporter?: ExporterPort | undefined;
+  /** Reflex Search rank seam (E5-T01; undefined ⇒ §6.6 fallback sweep, honestly flagged). */
+  readonly search?: SearchRankPort | undefined;
 }
 
 /** Per-invocation dispatch facts a service may need (never the raw wire message). */

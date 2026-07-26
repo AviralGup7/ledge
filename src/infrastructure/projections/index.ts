@@ -4,6 +4,7 @@ import { missionsProjector } from './core/projectors/missions.projector.js';
 import { recentlyClosedProjector } from './core/projectors/recently-closed.projector.js';
 import { tabsStoreProjector } from './core/projectors/tabs.projector.js';
 import { sessionsProjector } from '../snapshots/sessions.projector.js';
+import { searchIndexProjector } from '../search/index.projector.js';
 import type { ProjectionEngineDeps } from './core/engine.js';
 import { createProjectionEngine } from './core/engine.js';
 
@@ -19,12 +20,15 @@ export { recentlyClosedProjector } from './core/projectors/recently-closed.proje
  * compose; tests inject narrower sets freely (manual DI, ADR-025).
  * SessionsView (E2-T08) lives in infrastructure/snapshots (its family's home)
  * and registers here — the engine owns execution, the family owns the row law.
+ * searchIndex (E5-T01) is engine-internal: its frames never ride the wire
+ * (the outbox gates the ADR-010 window to the four surface views).
  */
 export const V1_PROJECTORS: readonly ProjectorDef[] = [
   missionsProjector,
   recentlyClosedProjector,
   sessionsProjector,
   tabsStoreProjector,
+  searchIndexProjector,
 ];
 
 /** Convenience factory on the full v1 set. */

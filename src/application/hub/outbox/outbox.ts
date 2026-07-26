@@ -138,7 +138,12 @@ export const createOutbox = (deps: OutboxDeps): Outbox => {
   // (deviceId, seq, batchIndex) watermark stays application-internal (multi-device
   // surfacing lands with sync in v2 — v1 serves the local device stream).
   const watermarkByView = new Map<string, number>();
+  /** ADR-010 wire window: exactly the four surface-consumed views. E5-T01 adds
+   *  engine-internal views ('searchIndex') whose frames must NEVER ride the wire —
+   *  surfaces hold no pk catalog for them and would misread them as resync signals. */
+  const WIRE_VIEWS = new Set(['missions', 'recentlyClosed', 'sessions', 'tabs']);
   const publishDelta = (view: string, seq: number, ops: readonly unknown[]): void => {
+    if (!WIRE_VIEWS.has(view)) return;
     const previous = watermarkByView.get(view);
     if (previous !== undefined && seq < previous) {
       // Projection rebuild publication: every surface must resync (its local watermark

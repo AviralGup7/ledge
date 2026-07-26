@@ -289,6 +289,52 @@ export const createQueryService = (edge: ServiceEdge): QueryService => {
         readonly domain: string;
         readonly state: 'live' | 'kept' | 'trash' | 'open';
       }[] = [];
+      // E5-T01: index-first path (§2.11 correctness > freshness). 'unavailable' or an
+      // absent port falls through to the §6.6 sweep; 'lagging' merges a bounded sweep
+      // tail under the lagging flag; 'fresh' serves ranked-only. Resolved rows that the
+      // tabs store can no longer produce are DROPPED, never fabricated.
+      let mergedFreshness: 'fresh' | 'lagging' | 'fallback' = 'fallback';
+      const seen = new Set<string>();
+      if (deps.search !== undefined) {
+        const ranked = await deps.search.query({
+          q,
+          scope: (scopeWanted === 'all' ? 'all' : scopeWanted) as
+            'open' | 'kept' | 'closed' | 'all',
+          limit,
+        });
+        if (!ranked.ok) return err(ranked.error);
+        if (ranked.value.kind === 'ok') {
+          const ids = ranked.value.answer.hits.map((h) => h.tabId);
+          const rowsR = await deps.engine.txn(['tabs'], 'readonly', async (tx) => {
+            const table = tx.table<StoredRecord>('tabs');
+            const rows: (StoredRecord | undefined)[] = [];
+            for (const id of ids) rows.push(await table.get(id));
+            return rows;
+          });
+          if (!rowsR.ok) return err(rowsR.error);
+          const rankedHits: typeof hits = [];
+          for (const row of rowsR.value) {
+            if (row === undefined) continue;
+            const view = tabViewOf(row);
+            rankedHits.push({
+              tabId: view.tabId,
+              missionId: view.missionId,
+              title: view.title,
+              url: view.url,
+              domain: view.domain,
+              state: view.state === 'live' ? 'open' : 'kept',
+            });
+          }
+          // Ranked head ∪ bounded sweep tail, ALWAYS (recall-parity law recorded in the
+          // E5 ADR note: the sweep is substring-honest and the index is term-based —
+          // merging keeps reflex search at least as recall-complete as the shipped sweep
+          // while ranking the head; 'closed' scope rides the same tail). Freshness from
+          // the index side: < LAG_THRESHOLD ⇒ 'fresh', else 'lagging' (§2.11).
+          mergedFreshness = ranked.value.answer.freshness;
+          hits.push(...rankedHits);
+          for (const h of rankedHits) seen.add(h.tabId);
+        }
+      }
       // §6.6 fallback sweep: keyword scan over kept/live rows (index-covered by state).
       const sweepStates: (readonly [scope: string, state: string])[] = [];
       if (scopes.includes('open')) sweepStates.push(['open', 'live']);
@@ -301,6 +347,7 @@ export const createQueryService = (edge: ServiceEdge): QueryService => {
             `${str(row['title'])}\n${str(row['url'])}\n${str(row['domain'])}`.toLowerCase();
           if (!q.split(/\s+/).every((term) => haystack.includes(term))) continue;
           const view = tabViewOf(row);
+          if (seen.has(view.tabId)) continue; // lag-merge: ranked head already carries it
           hits.push({
             tabId: view.tabId,
             missionId: view.missionId,
@@ -326,6 +373,7 @@ export const createQueryService = (edge: ServiceEdge): QueryService => {
           if (tabR.value === undefined) continue; // content-gone rows are not hits
           const haystack = `${str(tabR.value['title'])}\n${str(tabR.value['url'])}`.toLowerCase();
           if (!q.split(/\s+/).every((term) => haystack.includes(term))) continue;
+          if (seen.has(tabId)) continue; // lag-merge dedupe
           hits.push({
             tabId,
             missionId: str(tabR.value['missionId']),
@@ -337,11 +385,11 @@ export const createQueryService = (edge: ServiceEdge): QueryService => {
           if (hits.length >= limit) break;
         }
       }
-      // search_index is the Tier-3 tokenizer family; v1 searches by fallback law and
-      // says so (correctness law: ranked ∪ keyword-scan — the scan half, honestly).
+      // Correctness law, honestly flagged: 'fallback' = pure §6.6 sweep (no index or
+      // index unavailable); 'lagging' = ranked head ∪ bounded sweep tail (§2.11 merge).
       return ok({
         results: hits.slice(0, limit),
-        freshness: 'fallback',
+        freshness: mergedFreshness,
         searchedScopes: scopes,
       });
     },

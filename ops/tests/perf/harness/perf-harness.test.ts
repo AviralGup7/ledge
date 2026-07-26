@@ -51,6 +51,7 @@ const REQUIRED_ROWS = [
   'maintenance.recovery.duration',
   'storage.idb.txn',
   'ingest.event.latency',
+  'search.query',
 ] as const;
 
 const rowName = (r: ScenarioResult): string => (r.key.split('/')[1] ?? '').split('/')[0] ?? '';

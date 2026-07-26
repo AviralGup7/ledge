@@ -18,6 +18,7 @@ import {
   type WireStreamMessage,
 } from '@/application/hub/outbox/index.js';
 import type { ExporterPort, ImporterPort } from '@/application/ports/import-export.port.js';
+import type { SearchRankPort } from '@/application/ports/search.port.js';
 import type { JournalPort } from '@/application/ports/journal.port.js';
 import { CONTRACT_V } from '@/application/contracts/envelope.js';
 import type { SnapshotsPort } from '@/application/ports/snapshots.port.js';
@@ -41,6 +42,7 @@ import { createIntentLedger } from '@/infrastructure/intents/ledger.js';
 import { createJournal } from '@/infrastructure/journal/index.js';
 import { createV1ProjectionEngine } from '@/infrastructure/projections/index.js';
 import { stampInstallMarker } from '@/infrastructure/recovery/marker/index.js';
+import { createSearchRankAdapter } from '@/infrastructure/search/index.js';
 import { createSnapshotsAdapter } from '@/infrastructure/snapshots/index.js';
 import { createDexieStorageEngine, type DexieEngineDeps } from '@/infrastructure/storage/index.js';
 import {
@@ -140,6 +142,8 @@ export interface BackgroundRuntimeDeps {
   /** E5 portability families — unwired in v1 ⇒ services answer honest E_CAPABILITY. */
   readonly importer?: ImporterPort | undefined;
   readonly exporter?: ExporterPort | undefined;
+  /** E5-T01 rank seam (test override point; default = the live index adapter). */
+  readonly search?: SearchRankPort | undefined;
   /** §3.5 transport seam; default is the guarded chrome.runtime broadcast (silent
    *  drop when no surface is listening — streams are fire-and-forget by law). */
   readonly publish?: ((message: WireStreamMessage) => void) | undefined;
@@ -291,6 +295,9 @@ const buildRuntime = (
     journal,
     onDelta: outbox.onDelta,
   });
+  // E5-T01 rank seam, composed once: services read it, the maintenance lane below
+  // self-heals it. Idle-cheap until the first index build exists.
+  const searchRank = deps.search ?? createSearchRankAdapter({ engine: storage, projections, now });
   const ledger = createIntentLedger({ engine: storage, journal });
   const services = createServices({
     engine: storage,
@@ -317,8 +324,14 @@ const buildRuntime = (
         }),
     ...(deps.importer !== undefined ? { importer: deps.importer } : {}),
     ...(deps.exporter !== undefined ? { exporter: deps.exporter } : {}),
+    search: searchRank,
   });
   servicesRef = services;
+
+  // E5-T01 maintenance lane (ADR-015 background reindex): a dirty/stale-tokenizer
+  // index rebuilds in the engine's resumable chunks; queries stay sweep-honest in the
+  // meantime (§2.11 fallback law). SW-chunked v1; §3.6 offscreen build is the 50k door.
+  void searchRank.ensureIndexFresh();
 
   const wire = createDispatcher<AppServices>({
     registry: createHandlerRegistry({ commands: WIRE_COMMANDS, queries: WIRE_QUERIES }),

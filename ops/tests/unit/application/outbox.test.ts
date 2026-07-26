@@ -157,6 +157,32 @@ describe('E3-APP outbox — view deltas + resync + progress families', () => {
     expect(delta?.payload['watermark']).toBe(9);
   });
 
+  it('engine-internal views (searchIndex) NEVER ride the wire — ADR-010 window guard', () => {
+    const h = makeOutbox();
+    const ops = [{ kind: 'upsert' as const, key: 'pricing', record: {} }];
+    h.outbox.onDelta({
+      view: 'searchIndex',
+      watermark: { deviceId: DEV_A_MARK, seq: 9, batchIndex: 0 },
+      ops,
+    });
+    expect(h.published.filter((m) => m.name === 'ViewDelta')).toEqual([]);
+    // A regressing internal frame is equally mute: no watermark bookkeeping means
+    // no ResyncRequired poison for a view surfaces cannot hold (E5-T01 law).
+    h.outbox.onDelta({
+      view: 'searchIndex',
+      watermark: { deviceId: DEV_A_MARK, seq: 3, batchIndex: 0 },
+      ops,
+    });
+    expect(h.published.filter((m) => m.name === 'ResyncRequired')).toEqual([]);
+    // Sanity twin: a windowed view still publishes normally right after.
+    h.outbox.onDelta({
+      view: 'tabs',
+      watermark: { deviceId: DEV_A_MARK, seq: 1, batchIndex: 0 },
+      ops,
+    });
+    expect(h.published.find((m) => m.name === 'ViewDelta')?.payload['view']).toBe('tabs');
+  });
+
   it('watermark regression per view emits ResyncRequired{schema} exactly at the regression', () => {
     const h = makeOutbox();
     h.outbox.onDelta({

@@ -99,6 +99,9 @@ export const BUDGETS = {
   scanTailP95Ms: 50,
   /** EES §7.8: recovery RTO ≤ 5s boot reconcile. */
   recoveryRtoMs: 5_000,
+  /** EES §6 SearchRankPort row / roadmap M3 "Find anything": search query
+   *  p95 ≤ 100ms @10k-tab corpus. Observation row until E8-T15 hardening. */
+  searchQueryP95Ms: 100,
 } as const;
 
 /**

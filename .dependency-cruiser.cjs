@@ -46,10 +46,10 @@ module.exports = {
       name: 'writer-concentration',
       severity: 'error',
       comment:
-        'ADR-005 single writer (durable-write family: journal/storage/recovery/projections/intents/snapshots — snapshots per docs/adr-notes/ADR-005b-T08-snapshots-durable-family.md)',
+        'ADR-005 single writer (durable-write family: journal/storage/recovery/projections/intents/snapshots/search — snapshots per docs/adr-notes/ADR-005b-T08-snapshots-durable-family.md; search per docs/adr-notes/e5-search.md — the E5 index is an ADR-015 journal projection: reads durable truth (incl. the heads row) through engine/projections ports, appends NOTHING)',
       from: {
         pathNot:
-          '^src/(application|roots|infrastructure/(journal|storage|recovery|projections|intents|snapshots))',
+          '^src/(application|roots|infrastructure/(journal|storage|recovery|projections|intents|snapshots|search))',
       },
       to: { path: '^src/infrastructure/(journal|storage)' },
     },

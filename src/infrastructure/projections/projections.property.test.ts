@@ -76,17 +76,18 @@ const snapshotPair = async (h: ProjectionHarness): Promise<string> =>
 
 /** Replay one delta stream onto empty shelves (§3.5 faithfulness harness). */
 const replayFrames = (frames: readonly ViewDeltaFrame[]): string => {
-  type ShelfName = 'missions' | 'recently_closed' | 'sessions' | 'tabs';
+  type ShelfName = 'missions' | 'recently_closed' | 'sessions' | 'tabs' | 'search_index';
   const stores: Record<ShelfName, Map<string, Record<string, unknown>>> = {
     missions: new Map(),
     recently_closed: new Map(),
     sessions: new Map(),
     tabs: new Map(),
+    search_index: new Map(),
   };
   // E3-APP: fold is total over ViewName (growth-lawful — new views join the model);
   // patch pk addressing mirrors the engine's keyField law.
   const shelfNameOf = (view: ViewName): ShelfName =>
-    view === 'recentlyClosed' ? 'recently_closed' : view;
+    view === 'recentlyClosed' ? 'recently_closed' : view === 'searchIndex' ? 'search_index' : view;
   const pkOf = (view: ViewName): string => {
     switch (view) {
       case 'missions':
@@ -95,6 +96,8 @@ const replayFrames = (frames: readonly ViewDeltaFrame[]): string => {
         return 'entryId';
       case 'tabs':
         return 'ledgeTabId';
+      case 'searchIndex':
+        return 'token';
       default:
         return 'entryId';
     }
@@ -118,6 +121,7 @@ const replayFrames = (frames: readonly ViewDeltaFrame[]): string => {
     recently_closed: asArray(stores.recently_closed),
     sessions: asArray(stores.sessions),
     tabs: asArray(stores.tabs),
+    search_index: asArray(stores.search_index),
   });
 };
 
