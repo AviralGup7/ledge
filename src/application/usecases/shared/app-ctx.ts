@@ -10,6 +10,7 @@ import type {
 import type { IntentLedgerPort } from '@/application/ports/intent-ledger.port.js';
 import type { JournalPort } from '@/application/ports/journal.port.js';
 import type { ProjectionEnginePort } from '@/application/ports/projection-engine.port.js';
+import type { NativeSessionsPort } from '@/application/ports/sessions.port.js';
 import type { SnapshotsPort } from '@/application/ports/snapshots.port.js';
 import type { StorageEnginePort } from '@/application/ports/storage-engine.port.js';
 import type { TabsPort } from '@/application/ports/tabs.port.js';
@@ -44,6 +45,10 @@ export interface ServiceDeps {
   readonly importBytesStage?: ImportBytesStagePort | undefined;
   /** Reflex Search rank seam (E5-T01; undefined ⇒ §6.6 fallback sweep, honestly flagged). */
   readonly search?: SearchRankPort | undefined;
+  /** E6-T02 sessions cross-check seam (boot-incident candidate snapshot; undefined ⇒
+   *  the snapshot is skipped and the card carries no candidates row — degrade, never
+   *  fault the boot act). Read-only by port law (E3-T03). */
+  readonly sessions?: NativeSessionsPort | undefined;
 }
 
 /** Per-invocation dispatch facts a service may need (never the raw wire message). */

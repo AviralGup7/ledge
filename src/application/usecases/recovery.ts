@@ -23,12 +23,26 @@
 //      domain law governs state changes, and none occur — Blueprint §6.7).
 //      Settle law: zero failures settles the slot; any failure leaves it pending
 //      (retry is lawful and idempotent per-mission via the open-check).
+//
+//   E6-T02 cross-check candidates (adr note: docs/adr-notes/e6-recovery-crosscheck.md):
+//      F1 unmatched-only — candidates are the browser's Recently Closed backlog rows
+//      whose URL matches NO journal live-scope row (a match silently confirms scope).
+//      F3 snapshot law — the set is computed ONCE, at incident creation inside
+//      recordBoot, stored on the slot (≤ MAX_CROSSCHECK_CANDIDATES), and NEVER
+//      mutated afterward: the card always shows what that boot observed; later
+//      boots create new incidents rather than rewriting this one. F2 extend-
+//      restore — restoreBootSession accepts additive-optional `includeCandidates`
+//      (confirm-before-restore: the surface toggles rows in, nothing restores
+//      implicitly) and opens them as plain new tabs in ONE trailing window,
+//      never mission-formed; only snapshotted URLs are lawful picks (authority-
+//      free surfaces are never trusted), deduped against what the act reopened.
 import type { LedgeError, Result } from '@/shared-kernel/result/index.js';
 import { err, ledgeError, ok } from '@/shared-kernel/result/index.js';
 import type {
   BootReportInput,
   BootResolutionInput,
 } from '@/application/ports/recovery-boot.port.js';
+import type { RecentlyClosedTab } from '@/application/ports/sessions.port.js';
 import type { BootReportDisclosure, BootReportView } from '@/application/dto/index.js';
 import type { StoredRecord } from '@/application/ports/storage-engine.port.js';
 import type { ServiceEdge, UseCtx } from './shared/app-ctx.js';
@@ -44,6 +58,9 @@ export const BOOT_SLOT_SCHEMA_V = 1;
 const RESTORE_OP = 'command:RestoreBootSession';
 const URL_KEY = 'url';
 const GRACE_PROGRESS_STAGES = 4;
+/** Platform backlog ceiling (EES §2.13 step 5) — snapshot storage bound + the
+ *  includeCandidates legality ceiling. */
+export const MAX_CROSSCHECK_CANDIDATES = 25;
 
 export type BootSeverity = 'loss-risk' | 'clean-abnormal';
 
@@ -58,6 +75,10 @@ export interface BootReportSlot {
   readonly settledAt: number | null;
   /** Durable restore claim (cid of the in-flight put-back; null when idle). */
   readonly restoringCid: string | null;
+  /** E6-T02 F3: boot-time cross-check candidate snapshot (immutable; additive-
+   *  optional so the slot schema stays v1 — bumping V would orphan a pending
+   *  unrestored incident under the forward-tolerance-absent read law). */
+  readonly candidates?: readonly RecentlyClosedTab[] | undefined;
 }
 
 export interface RecordBootAnswer {
@@ -73,6 +94,9 @@ export interface RestoreOutcome {
   readonly missionsRestored: number;
   readonly tabsRestored: number;
   readonly disclosure: readonly string[];
+  /** E6-T02 F2: candidate tabs actually opened (present ⟺ the request carried
+   *  includeCandidates — a symmetric answer even when every pick was deduped). */
+  readonly candidatesRestored?: number | undefined;
 }
 
 export interface RecoveryService {
@@ -81,7 +105,11 @@ export interface RecoveryService {
     readonly bootReportId?: string | undefined;
   }): Promise<Result<BootReportView | null, LedgeError>>;
   restoreBootSession(
-    input: { readonly bootReportId: string },
+    input: {
+      readonly bootReportId: string;
+      /** E6-T02 F2: confirmed candidate URLs from the panel's toggles. */
+      readonly includeCandidates?: readonly string[] | undefined;
+    },
     ctx: UseCtx,
   ): Promise<Result<RestoreOutcome, LedgeError>>;
 }
@@ -99,7 +127,22 @@ const readSlot = async (
   // Forward-tolerance (§2.9): a slot that fails shape is treated ABSENT — the next
   // record re-establishes it; a report fetch answers null rather than crashing.
   if (v.schemaV !== BOOT_SLOT_SCHEMA_V || typeof v.bootReportId !== 'string') return ok(undefined);
-  return ok(v as BootReportSlot);
+  const candidates = storedCandidatesOf(v.candidates);
+  return ok({ ...(v as BootReportSlot), ...(candidates !== undefined ? { candidates } : {}) });
+};
+
+/** E6-T02: sanitize the additive-optional snapshot field — malformed rows are
+ *  dropped (§2.9 read-side degrade), a present-but-empty set stays a snapshot. */
+const storedCandidatesOf = (v: unknown): readonly RecentlyClosedTab[] | undefined => {
+  if (!Array.isArray(v)) return undefined;
+  const out: RecentlyClosedTab[] = [];
+  for (const row of v as readonly unknown[]) {
+    if (typeof row !== 'object' || row === null) continue;
+    const url = str((row as { readonly url?: unknown }).url);
+    if (url.length === 0) continue;
+    out.push({ url, title: str((row as { readonly title?: unknown }).title) });
+  }
+  return out;
 };
 
 // ── pure decisions (unit-law surfaces) ──────────────────────────────────────────
@@ -147,6 +190,28 @@ export const disclosureOf = (
   return out;
 };
 
+/**
+ * E6-T02 F1 (unmatched-only): the Recently Closed backlog minus every URL the
+ * journal's live scope already accounts for — a match silently confirms scope.
+ * Dedupe by URL keep-first (backlog arrives most-recent-first), capped at the
+ * platform ceiling so the slot snapshot stays bounded.
+ */
+export const crossCheckCandidatesOf = (
+  backlog: readonly RecentlyClosedTab[],
+  scopeUrls: readonly string[],
+): readonly RecentlyClosedTab[] => {
+  const scoped = new Set(scopeUrls);
+  const seen = new Set<string>();
+  const out: RecentlyClosedTab[] = [];
+  for (const row of backlog) {
+    if (row.url.length === 0 || scoped.has(row.url) || seen.has(row.url)) continue;
+    seen.add(row.url);
+    out.push({ url: row.url, title: row.title });
+    if (out.length >= MAX_CROSSCHECK_CANDIDATES) break;
+  }
+  return out;
+};
+
 export const createRecoveryService = (edge: ServiceEdge): RecoveryService => {
   const { deps, appender } = edge;
 
@@ -187,6 +252,24 @@ export const createRecoveryService = (edge: ServiceEdge): RecoveryService => {
     });
   };
 
+  /**
+   * E6-T02 F3: the ONE-AND-ONLY candidate computation — incident creation, never
+   * again. Every failure path degrades to ABSENT (no snapshot key): the boot act
+   * must never fault on a cross-check seam, and the report's crossCheck token
+   * already discloses a degraded seam.
+   */
+  const candidatesSnapshot = async (): Promise<readonly RecentlyClosedTab[] | undefined> => {
+    if (deps.sessions === undefined) return undefined;
+    const scope = await liveScope();
+    if (!scope.ok) return undefined;
+    const backlog = await deps.sessions.recentlyClosedTabs();
+    if (!backlog.ok) return undefined;
+    return crossCheckCandidatesOf(
+      backlog.value,
+      scope.value.rows.map((row) => str(row[URL_KEY])),
+    );
+  };
+
   const toView = (
     slot: BootReportSlot,
     scope: { tabs: number; missions: number; asOf: number },
@@ -199,6 +282,7 @@ export const createRecoveryService = (edge: ServiceEdge): RecoveryService => {
     asOf: scope.asOf > 0 ? scope.asOf : slot.report.bootTs,
     scope: { tabsRecoverable: scope.tabs, missionsAffected: scope.missions },
     crossCheck: slot.report.crossCheck,
+    ...(slot.candidates !== undefined ? { crossCheckCandidates: slot.candidates } : {}),
     disclosure: disclosureOf(slot.report, slot.report.resolutions),
     pending: slot.severity === 'loss-risk' && slot.settledAt === null,
     restoredAt: slot.settledAt,
@@ -225,6 +309,9 @@ export const createRecoveryService = (edge: ServiceEdge): RecoveryService => {
         });
       }
       const gate = announceOf(report);
+      // E6-T02 F3 snapshot law: compute the candidate set exactly once — here, at
+      // incident creation. Non-incident slots take none (no card path exists).
+      const candidates = gate.announce ? await candidatesSnapshot() : undefined;
       const fresh: BootReportSlot = {
         schemaV: BOOT_SLOT_SCHEMA_V,
         bootReportId: deps.ids.nextId(),
@@ -234,6 +321,7 @@ export const createRecoveryService = (edge: ServiceEdge): RecoveryService => {
         severity: gate.severity,
         settledAt: null,
         restoringCid: null,
+        ...(candidates !== undefined ? { candidates } : {}),
       };
       const wrote = await writeSlot(fresh);
       if (!wrote.ok) return err(wrote.error);
@@ -282,6 +370,14 @@ export const createRecoveryService = (edge: ServiceEdge): RecoveryService => {
       }
       if (!current.announced) return legalityRefusal('nothing-to-restore');
       if (current.restoringCid !== null) return legalityRefusal('restore-in-flight');
+      // E6-T02 F2 legality (decided before ANY browser move): bounded, non-empty
+      // strings only — over-limit or malformed payloads refuse, never truncate.
+      const requested = input.includeCandidates;
+      if (requested !== undefined) {
+        if (requested.length > MAX_CROSSCHECK_CANDIDATES)
+          return legalityRefusal('candidates-over-limit');
+        if (requested.some((u) => u.length === 0)) return legalityRefusal('candidates-invalid');
+      }
 
       // Durable claim BEFORE any browser move: a crash/concurrent caller finds the
       // stamp and refuses instead of double-opening windows (§6.5 band discipline).
@@ -311,6 +407,8 @@ export const createRecoveryService = (edge: ServiceEdge): RecoveryService => {
       let tabsRestored = 0;
       let failures = 0;
       let firstWindow = true;
+      // URLs this act already reopened — candidate picks dedupe against them.
+      const reopenedUrls = new Set<string>();
 
       for (const [missionId, bucket] of ordered) {
         ctx.token.throwIfCancelled();
@@ -413,6 +511,38 @@ export const createRecoveryService = (edge: ServiceEdge): RecoveryService => {
         }
         missionsRestored += 1;
         tabsRestored += plans.length;
+        for (const plan of plans) reopenedUrls.add(plan.url);
+      }
+
+      // E6-T02 F2 (extend-restore): confirmed candidates open as PLAIN tabs in ONE
+      // trailing window — never mission-formed, only when the request asked; law:
+      //   · snapshotted URLs only (authority-free surfaces are never trusted);
+      //   · deduped against anything this act already reopened;
+      //   · focused ONLY when no mission window preceded it (never steal the
+      //     current browsing focus — same calm-arrival rule as the mission loop);
+      //   · a browser failure discloses and keeps the incident pending (retry ok).
+      let candidatesRestored: number | undefined;
+      if (requested !== undefined) {
+        candidatesRestored = 0;
+        const snapshotUrls = new Set((current.candidates ?? []).map((c) => c.url));
+        const picks: string[] = [];
+        for (const url of requested) {
+          if (!snapshotUrls.has(url) || reopenedUrls.has(url) || picks.includes(url)) continue;
+          picks.push(url);
+        }
+        if (picks.length > 0) {
+          const opened = await deps.windows.create({
+            tabSpecs: picks.map((url) => ({ url })),
+            focused: firstWindow,
+          });
+          if (!opened.ok) {
+            failures += 1;
+            disclosure.add('restore-failed');
+          } else {
+            firstWindow = false;
+            candidatesRestored = picks.length;
+          }
+        }
       }
 
       ctx.progress({ stage: 3 });
@@ -427,7 +557,12 @@ export const createRecoveryService = (edge: ServiceEdge): RecoveryService => {
       if (!settledWrite.ok) return err(settledWrite.error);
       ctx.progress({ stage: GRACE_PROGRESS_STAGES });
       if (missionsRestored === 0 && failures === 0) disclosure.add('nothing-live');
-      return ok({ missionsRestored, tabsRestored, disclosure: [...disclosure].sort() });
+      return ok({
+        missionsRestored,
+        tabsRestored,
+        disclosure: [...disclosure].sort(),
+        ...(candidatesRestored !== undefined ? { candidatesRestored } : {}),
+      });
     },
   };
 };

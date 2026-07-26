@@ -6,6 +6,7 @@
 // extra row fields degrade, never throw (storage §2.9 law mirrored read-side).
 import type { StoredRecord } from '@/application/ports/storage-engine.port.js';
 import type { MissionViewRow, RecentlyClosedRow } from '@/application/ports/view-rows.js';
+import type { RecentlyClosedTab } from '@/application/ports/sessions.port.js';
 import type { TabInfo } from '@/application/ports/tabs.port.js';
 
 // Row declarations come from the application port seam (view-rows.ts) — the DTO
@@ -136,6 +137,14 @@ export interface BootReportView {
     readonly missionsAffected: number;
   };
   readonly crossCheck: string;
+  /**
+   * E6-T02 cross-check candidates — the boot-time Recently Closed backlog rows
+   * whose URL matched NO live-scope journal row (F1 unmatched-only). Snapshotted
+   * ONCE at incident creation and immutable thereafter (F3 snapshot law): the
+   * card always shows what that boot observed, never a live re-query. Absent ⟺
+   * no snapshot was taken (non-incident slot, sessions seam unwired/unavailable).
+   */
+  readonly crossCheckCandidates?: readonly RecentlyClosedTab[] | undefined;
   readonly disclosure: readonly BootReportDisclosure[];
   /** §14.4 card predicate: severity loss-risk AND unsettled. */
   readonly pending: boolean;

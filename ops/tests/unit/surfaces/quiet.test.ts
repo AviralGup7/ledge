@@ -987,3 +987,97 @@ describe('E6-T01 quiet · W7 recovery card (§14.4 venue + catalog copy)', () =>
     h.unmount();
   });
 });
+
+// E6-T02 · candidates panel — boot-time snapshot rows, confirm-before-restore
+// toggles (default excluded), additive includeCandidates put-back payload.
+describe('E6-T02 quiet · recovery candidates panel (confirm-before-restore)', () => {
+  const SNAPSHOT = [
+    { url: 'https://alpha.test/one', title: 'Alpha one' },
+    { url: 'https://beta.test/two', title: 'Beta two' },
+  ];
+
+  it('renders snapshot rows with catalog head copy; absent/empty snapshot hides the panel', async () => {
+    const h = mount();
+    h.answers.set('GetBootReport', pendingReport({ crossCheckCandidates: SNAPSHOT }));
+    await answerAll(h);
+    expect(mustQuery(h.doc.body, '[data-line="recovery-candidates-head"]').textContent).toBe(
+      copyOf('msg.recovery.candidates-head', { count: 2 }),
+    );
+    const rows = h.doc.body.querySelectorAll('[data-line="recovery-candidate"]');
+    expect(rows.length).toBe(2);
+    const first = rows[0];
+    const second = rows[1];
+    if (first === undefined || second === undefined) throw new Error('rows must exist');
+    expect(mustQuery(first, '[data-line="recovery-candidate-title"]').textContent).toBe(
+      'Alpha one',
+    );
+    expect(mustQuery(second, '[data-url]').getAttribute('data-url')).toBe(SNAPSHOT[1]?.url);
+    h.unmount();
+
+    const h2 = mount();
+    h2.answers.set('GetBootReport', pendingReport()); // no key ⇒ no snapshot taken
+    await answerAll(h2);
+    expect(h2.doc.body.querySelector('[data-panel="recovery-candidates"]')).toBeNull();
+    h2.unmount();
+
+    const h3 = mount();
+    h3.answers.set('GetBootReport', pendingReport({ crossCheckCandidates: [] }));
+    await answerAll(h3);
+    expect(h3.doc.body.querySelector('[data-panel="recovery-candidates"]')).toBeNull();
+    h3.unmount();
+  });
+
+  it('toggle-in arms the payload; untoggled rows never ride the put-back', async () => {
+    const h = mount();
+    h.answers.set('GetBootReport', pendingReport({ crossCheckCandidates: SNAPSHOT }));
+    await answerAll(h);
+    // Default state: every candidate excluded.
+    const first = mustQuery(
+      h.doc.body,
+      '[data-action="include-candidate"][data-url="https://alpha.test/one"]',
+    );
+    expect(first.getAttribute('aria-pressed')).toBe('false');
+    expect(first.textContent).toBe(copyOf('msg.action.include-candidate'));
+    first.click();
+    await flush();
+    const armed = mustQuery(
+      h.doc.body,
+      '[data-action="include-candidate"][data-url="https://alpha.test/one"]',
+    );
+    expect(armed.getAttribute('aria-pressed')).toBe('true');
+    expect(armed.textContent).toBe(copyOf('msg.action.exclude-candidate'));
+
+    mustQuery(h.doc.body, '[data-action="put-back"]').click();
+    await flush();
+    const sent = h.fake.lastOf('RestoreBootSession');
+    expect(sent.payload).toEqual({
+      bootReportId: '01HF7XRECEVERY000000000000',
+      includeCandidates: ['https://alpha.test/one'],
+    });
+    h.fake.apply(sent.cid, {
+      missionsRestored: 2,
+      tabsRestored: 3,
+      disclosure: [],
+      candidatesRestored: 1,
+    });
+    await flush();
+    expect(mustQuery(h.doc.body, '[data-card="recovery-resolved"]').textContent).toBe(
+      copyOf('msg.recovery.restored'),
+    );
+    h.unmount();
+  });
+
+  it('nothing toggled ⇒ the additive payload is an explicit empty list (never stranger urls)', async () => {
+    const h = mount();
+    h.answers.set('GetBootReport', pendingReport({ crossCheckCandidates: SNAPSHOT }));
+    await answerAll(h);
+    mustQuery(h.doc.body, '[data-action="put-back"]').click();
+    await flush();
+    const sent = h.fake.lastOf('RestoreBootSession');
+    expect(sent.payload).toEqual({
+      bootReportId: '01HF7XRECEVERY000000000000',
+      includeCandidates: [],
+    });
+    h.unmount();
+  });
+});

@@ -244,11 +244,17 @@ export const MESSAGE_REGISTRY: Readonly<Record<string, MessageSpec>> = {
     // so the service expands per-mission restores server-side. Additive; older
     // surfaces simply never send it. disclosure entries are STABLE TOKENS from
     // the report's receipts (never display copy — the catalog renders them).
-    payload: { bootReportId: 'id' },
+    // E6-T02 (user-ruled amendment, docs/adr-notes/e6-recovery-crosscheck.md):
+    // includeCandidates carries the panel's CONFIRMED cross-check urls (F2
+    // extend-restore; bounded ≤25, snapshot-members only, plain tabs in one
+    // trailing window); candidatesRestored answers how many actually opened.
+    // Both additive-optional — older fixtures/fixtures-less sends stand.
+    payload: { bootReportId: 'id', 'includeCandidates?': { array: 'string' } },
     response: {
       missionsRestored: 'int',
       tabsRestored: 'int',
       disclosure: { array: 'string' },
+      'candidatesRestored?': 'int',
     },
   },
   NudgeDismiss: {
@@ -353,6 +359,11 @@ export const MESSAGE_REGISTRY: Readonly<Record<string, MessageSpec>> = {
     // Id-less call = the latest incident slot (the auto-opened quiet tab can
     // land after the fire-and-forget stream); an explicit id serves card-on-
     // demand reads. Response: the BootReport DTO (EES §2.13 schema v1) or null.
+    // E6-T02 (user-ruled amendment, docs/adr-notes/e6-recovery-crosscheck.md):
+    // the DTO carries crossCheckCandidates — the boot-TIME snapshot stored on
+    // the incident slot (F3: computed once at incident creation, immutable;
+    // never a live re-query). Additive-optional on the DTO, wire payload is
+    // unchanged, so older readers stand.
     payload: { 'bootReportId?': 'id' },
   },
 

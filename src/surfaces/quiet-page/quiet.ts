@@ -181,6 +181,8 @@ export const mountQuietPage = (doc: Document, deps: QuietDeps): Mounted => {
     readonly asOf: number;
     readonly scope: { readonly tabsRecoverable: number; readonly missionsAffected: number };
     readonly disclosure: readonly { readonly token: string; readonly count: number }[];
+    /** E6-T02: the incident's boot-time candidate snapshot (absent ⟺ none taken). */
+    readonly crossCheckCandidates?: readonly { readonly url: string; readonly title: string }[];
     readonly pending: boolean;
   }
 
@@ -212,14 +214,28 @@ export const mountQuietPage = (doc: Document, deps: QuietDeps): Mounted => {
         token: asString(d['token']),
         count: asNumber(d['count']),
       })),
+      ...(raw['crossCheckCandidates'] !== undefined
+        ? {
+            crossCheckCandidates: asRecords(raw['crossCheckCandidates'])
+              .map((c) => ({ url: asString(c['url']), title: asString(c['title']) }))
+              .filter((c) => c.url.length > 0),
+          }
+        : {}),
       pending: raw['pending'] === true,
     };
   };
+
+  /** Confirm-before-restore law: candidate urls the user toggled IN (default:
+   *  excluded — nothing candidate-shaped rides the put-back uninvited). */
+  let includedCandidates = new Set<string>();
 
   const renderRecovery = (): void => {
     clearChildren(recoverySlot);
     const view = recoveryView;
     if (view === null || !view.pending) return; // §14.4 gate rides the DTO
+    // Toggle hygiene: only urls from THIS incident's snapshot stay armed.
+    const snapshotUrls = new Set((view.crossCheckCandidates ?? []).map((c) => c.url));
+    includedCandidates = new Set([...includedCandidates].filter((u) => snapshotUrls.has(u)));
     const titleKey = view.copyKey ?? 'msg.recovery.crashed';
     const card = el(doc, 'div', {
       cls: 'recovery-card',
@@ -266,6 +282,64 @@ export const mountQuietPage = (doc: Document, deps: QuietDeps): Mounted => {
       );
     }
     card.appendChild(actions);
+    // E6-T02 candidates panel (boot-time snapshot; hidden when none was taken or
+    // the set came back empty — the card shows exactly what that boot observed).
+    const candidates = view.crossCheckCandidates;
+    if (candidates !== undefined && candidates.length > 0) {
+      const panel = el(doc, 'div', {
+        cls: 'recovery-candidates',
+        attrs: { 'data-panel': 'recovery-candidates' },
+      });
+      panel.appendChild(
+        el(doc, 'p', {
+          cls: 'state-recovery',
+          text: copyOf('msg.recovery.candidates-head', { count: candidates.length }),
+          attrs: { 'data-line': 'recovery-candidates-head' },
+        }),
+      );
+      const list = el(doc, 'ul', {
+        cls: 'recovery-candidate-list',
+        attrs: { role: 'list' },
+      });
+      for (const c of candidates) {
+        const included = includedCandidates.has(c.url);
+        const row = el(doc, 'li', {
+          cls: 'recovery-candidate',
+          attrs: { 'data-line': 'recovery-candidate', 'data-url': c.url },
+        });
+        row.appendChild(
+          el(doc, 'button', {
+            cls: included ? 'btn btn-candidate is-included' : 'btn btn-candidate',
+            text: copyOf(
+              included ? 'msg.action.exclude-candidate' : 'msg.action.include-candidate',
+            ),
+            attrs: {
+              type: 'button',
+              'data-action': 'include-candidate',
+              'data-url': c.url,
+              'aria-pressed': included ? 'true' : 'false',
+            },
+            on: {
+              click: () => {
+                if (includedCandidates.has(c.url)) includedCandidates.delete(c.url);
+                else includedCandidates.add(c.url);
+                renderRecovery();
+              },
+            },
+          }),
+        );
+        row.appendChild(
+          el(doc, 'span', {
+            cls: 'recovery-candidate-title',
+            text: c.title.length > 0 ? c.title : c.url,
+            attrs: { 'data-line': 'recovery-candidate-title' },
+          }),
+        );
+        list.appendChild(row);
+      }
+      panel.appendChild(list);
+      card.appendChild(panel);
+    }
     if (reviewOpen && view.disclosure.length > 0) {
       const notes = el(doc, 'ul', {
         cls: 'recovery-notes',
@@ -295,6 +369,7 @@ export const mountQuietPage = (doc: Document, deps: QuietDeps): Mounted => {
     const key = partial ? 'msg.recovery.restored-partial' : 'msg.recovery.restored';
     recoveryView = null;
     reviewOpen = false;
+    includedCandidates = new Set();
     clearChildren(recoverySlot);
     recoverySlot.appendChild(
       el(doc, 'p', {
@@ -307,7 +382,12 @@ export const mountQuietPage = (doc: Document, deps: QuietDeps): Mounted => {
   };
 
   const runPutBack = (bootReportId: string): void => {
-    runCommand('RestoreBootSession', { bootReportId }, (value) => {
+    // E6-T02 F2: the payload carries ONLY the toggled-in candidates, and only when
+    // this card's incident actually snapshotted a candidate set (additive wire).
+    const snapshotTaken = recoveryView?.crossCheckCandidates !== undefined;
+    const payload: Record<string, unknown> = { bootReportId };
+    if (snapshotTaken) payload['includeCandidates'] = [...includedCandidates];
+    runCommand('RestoreBootSession', payload, (value) => {
       const result = asRecord(value);
       resolveRecovery({
         missionsRestored: asNumber(result['missionsRestored']),

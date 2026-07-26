@@ -251,7 +251,15 @@ export const WIRE_COMMANDS: readonly CommandRegistration<S>[] = [
     (ctx) => {
       const bootReportId = str(ctx.message.payload['bootReportId']);
       if (bootReportId === undefined) return missing('RestoreBootSession', 'bootReportId');
-      return ctx.services.recovery.restoreBootSession({ bootReportId }, useCtx(ctx));
+      // E6-T02 F2: additive-optional confirmed-candidate urls (panel toggles).
+      const rawCandidates = ctx.message.payload['includeCandidates'];
+      return ctx.services.recovery.restoreBootSession(
+        {
+          bootReportId,
+          ...(rawCandidates !== undefined ? { includeCandidates: strArr(rawCandidates) } : {}),
+        },
+        useCtx(ctx),
+      );
     },
     { neverAutoRetry: true }, // mid-flight retry could double-open windows (C11-class)
   ),

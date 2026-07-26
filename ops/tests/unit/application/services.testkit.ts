@@ -31,6 +31,7 @@ import type {
   WindowsPort,
 } from '@/application/ports/windows.port.js';
 import type { IngestHub } from '@/application/hub/ingest/types.js';
+import type { NativeSessionsPort, RecentlyClosedTab } from '@/application/ports/sessions.port.js';
 import { createIntentLedger } from '@/infrastructure/intents/ledger.js';
 import { createJournal } from '@/infrastructure/journal/index.js';
 import { DEV_A, openEngine, testId } from '@/infrastructure/journal/core/testkit.js';
@@ -186,6 +187,39 @@ export const makeFakeWindows = (tabs: FakeTabs): FakeWindows => {
   };
 };
 
+// ─────────────────────────── fake sessions port ───────────────────────────
+
+/** E6-T02 cross-check seam default: an EMPTY backlog (existing recovery proofs run
+ *  candidate-free; candidate cases opt in via opts.sessions with a seeded fake). */
+export interface FakeSessions {
+  readonly port: NativeSessionsPort;
+  readonly set: (backlog: readonly RecentlyClosedTab[]) => void;
+  /** Test control: the NEXT recentlyClosedTabs() fails E_CAPABILITY (degrade law). */
+  readonly failOnce: () => void;
+}
+
+export const makeFakeSessions = (initial: readonly RecentlyClosedTab[] = []): FakeSessions => {
+  let backlog = initial;
+  let failNext = false;
+  return {
+    set: (b) => {
+      backlog = b;
+    },
+    failOnce: () => {
+      failNext = true;
+    },
+    port: {
+      recentlyClosedTabs: () => {
+        if (failNext) {
+          failNext = false;
+          return Promise.resolve(err(ledgeError('E_CAPABILITY', { op: 'sessions.read' })));
+        }
+        return Promise.resolve(ok(backlog));
+      },
+    },
+  };
+};
+
 // ─────────────────────────── fake snapshots port ──────────────────────────
 
 export interface FakeSnapshots extends SnapshotsPort {
@@ -322,6 +356,9 @@ export const makeServices = async (
     /** E6-T01 failure-path seams: swap the chrome fakes for fault-injecting ports. */
     readonly tabs?: TabsPort | undefined;
     readonly windows?: WindowsPort | undefined;
+    /** E6-T02 cross-check seam (default: empty-backlog fake; pass a FakeSessions.port
+     *  to pre-seed the Recently Closed backlog). */
+    readonly sessions?: NativeSessionsPort | undefined;
     readonly importer?: ServiceDeps['importer'];
     readonly exporter?: ServiceDeps['exporter'];
     readonly importBytesStage?: ServiceDeps['importBytesStage'];
@@ -364,6 +401,7 @@ export const makeServices = async (
     snapshots: fakeSnapshots,
     tabs: opts.tabs ?? fakeTabs,
     windows: opts.windows ?? fakeWindows,
+    sessions: opts.sessions ?? makeFakeSessions().port,
     ids,
     deviceId: DEV_A,
     now,

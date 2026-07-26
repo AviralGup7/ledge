@@ -23,6 +23,7 @@ import type {
   ImporterPort,
 } from '@/application/ports/import-export.port.js';
 import type { SearchRankPort } from '@/application/ports/search.port.js';
+import type { NativeSessionsPort } from '@/application/ports/sessions.port.js';
 import type { JournalPort } from '@/application/ports/journal.port.js';
 import type { IntentLedgerPort } from '@/application/ports/intent-ledger.port.js';
 import type { ProjectionEnginePort } from '@/application/ports/projection-engine.port.js';
@@ -163,6 +164,9 @@ export interface BackgroundRuntimeDeps {
   readonly importBytesStage?: ImportBytesStagePort | undefined;
   /** E5-T01 rank seam (test override point; default = the live index adapter). */
   readonly search?: SearchRankPort | undefined;
+  /** E6-T02 sessions cross-check seam (default: the lazy chrome.sessions
+   *  adapter — E3-T03 read-only law; undefined-able in chrome-less hosts). */
+  readonly sessions?: NativeSessionsPort | undefined;
   /** §3.5 transport seam; default is the guarded chrome.runtime broadcast (silent
    *  drop when no surface is listening — streams are fire-and-forget by law). */
   readonly publish?: ((message: WireStreamMessage) => void) | undefined;
@@ -448,6 +452,9 @@ const buildRuntime = (
     (stageIdb !== undefined ? createImportBytesStage({ idb: stageIdb, now }) : undefined);
   const ledger = createIntentLedger({ engine: storage, journal });
   const tabs = deps.tabs ?? createChromeTabsAdapter();
+  // E6-T02: the services-tier cross-check seam — same E3-T03 read-only adapter
+  // the recovery boot act's reconciler seam uses (lazy ambient, chrome-less safe).
+  const sessions = deps.sessions ?? createChromeSessionsAdapter();
   const services = createServices({
     engine: storage,
     journal,
@@ -456,6 +463,7 @@ const buildRuntime = (
     snapshots: deps.snapshots ?? createSnapshotsAdapter({ engine: storage, ids }),
     tabs,
     windows: deps.windows ?? createChromeWindowsAdapter(),
+    sessions,
     ids,
     deviceId: booted.deviceId,
     now,

@@ -74,7 +74,9 @@
       "pin": "Pin",
       "refresh": "Refresh",
       "details": "Details",
-      "review-first": "Review first"
+      "review-first": "Review first",
+      "include-candidate": "Add to put-back",
+      "exclude-candidate": "Leave out"
     },
     "undo": {
       "archived": "Back from the Archive.",
@@ -155,7 +157,8 @@
       "note-left-open": "{count} items were left exactly where they were rather than risk them.",
       "note-deferred": "{count} background actions kept their place for next time.",
       "note-crosscheck": "Chrome's own Recently Closed list wasn't checked this time.",
-      "note-marker-gap": "One signal was unclear; the journal stayed the only source of truth."
+      "note-marker-gap": "One signal was unclear; the journal stayed the only source of truth.",
+      "candidates-head": "{count} recently closed pages could be added to the put-back."
     },
     "import": {
       "choose": "Choose a file…",
