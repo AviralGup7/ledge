@@ -233,27 +233,35 @@ const snapshotAll = async (h: ProjectionHarness): Promise<string> =>
     missions: shelfCanon(await storeSnapshot(h, 'missions')),
     recently_closed: shelfCanon(await storeSnapshot(h, 'recently_closed')),
     sessions: shelfCanon(await storeSnapshot(h, 'sessions')),
+    tabs: shelfCanon(await storeSnapshot(h, 'tabs')),
   });
 
-/** §3.5 faithfulness harness: replay the published deltas onto empty shelves. */
+/** §3.5 faithfulness harness: replay the published deltas onto empty shelves.
+ *  REGRESSION LOCK (fc-seed-−1953314806-class): this mirror MUST stay ViewName-TOTAL —
+ *  when the registry grew the 'tabs' view (E3-APP), the 3-view mirror silently routed
+ *  tabs frames into the recently_closed shelf under pk 'entryId', fabricating phantom
+ *  rows ONLY in the replay model. Typed Record<ViewName, ...> below makes any future
+ *  view growth a compile error here, never a silent misroute. */
 const replayFrames = (frames: readonly ViewDeltaFrame[]): string => {
-  const stores: Record<'missions' | 'recently_closed' | 'sessions', Map<string, unknown>> = {
+  const stores: Record<ViewDeltaFrame['view'], Map<string, unknown>> = {
     missions: new Map(),
-    recently_closed: new Map(),
+    recentlyClosed: new Map(),
     sessions: new Map(),
+    tabs: new Map(),
   };
-  const shelfOf = (view: ViewDeltaFrame['view']) =>
-    view === 'missions'
-      ? stores.missions
-      : view === 'sessions'
-        ? stores.sessions
-        : stores.recently_closed;
-  // Mirror of the engine's patch law (engine.ts: patch re-adds the store pk),
-  // pk naming per store as in the T03 suite's replay mirror.
+  // Mirror of the engine's patch law (engine.ts: patch re-adds the store pk), pk naming
+  // per projector declaration (ProjectorDef.keyField; sessions upsert carries its
+  // compound pk inside the record, a patch branch never addresses it).
   const pkOf = (view: ViewDeltaFrame['view']): string =>
-    view === 'missions' ? 'missionId' : 'entryId';
+    view === 'missions'
+      ? 'missionId'
+      : view === 'tabs'
+        ? 'ledgeTabId'
+        : view === 'sessions'
+          ? 'snapshotId'
+          : 'entryId';
   for (const frame of frames) {
-    const store = shelfOf(frame.view);
+    const store = stores[frame.view];
     for (const op of frame.ops) {
       if (op.kind === 'upsert') store.set(op.key, { ...(op.record as Record<string, unknown>) });
       if (op.kind === 'remove') store.delete(op.key);
@@ -265,10 +273,36 @@ const replayFrames = (frames: readonly ViewDeltaFrame[]): string => {
   }
   return stableStringify({
     missions: shelfCanon([...stores.missions.values()]),
-    recently_closed: shelfCanon([...stores.recently_closed.values()]),
+    recently_closed: shelfCanon([...stores.recentlyClosed.values()]),
     sessions: shelfCanon([...stores.sessions.values()]),
+    tabs: shelfCanon([...stores.tabs.values()]),
   });
 };
+
+/** REGRESSION LOCK (fc-seed-−1953314806, CI property gate): the shrunk counterexample
+ *  [formed(m1,[t5]), renamed(m1)]. Class: the delta-replay mirror's view mapping was
+ *  NOT ViewName-total — tabs frames misrouted into the recently_closed shelf. This is
+ *  the per-message minimal reproducer (deterministic, sub-second) the property hangs on. */
+describe('E2-T10 regression — tabs-view mirror totality (fc-seed-−1953314806)', () => {
+  it('formed→renamed replay keeps all FOUR shelves frame-faithful (never a phantom row)', async () => {
+    const events = streamOf([
+      { kind: 'formed', m: 1, tabs: [5] },
+      { kind: 'renamed', m: 1 },
+    ]);
+    const a = await makeProjections();
+    try {
+      await seedJournal(a, events);
+      unwrap(await a.projections.applyFromJournal(DEV_A), 'apply');
+      const snapA = await snapshotAll(a);
+      expect(replayFrames(a.frames)).toBe(snapA);
+      // The bug's fingerprint, pinned literally: no tab-keyed phantom in recently_closed.
+      const parsed = JSON.parse(snapA) as { readonly recently_closed: readonly unknown[] };
+      expect(parsed.recently_closed.length).toBe(0);
+    } finally {
+      await a.engine.close();
+    }
+  });
+});
 
 describe('E2-T10 property — replay invariants across engines + reset boundaries', () => {
   it(
