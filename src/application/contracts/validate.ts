@@ -100,6 +100,106 @@ function checkPayloadGuards(payload: unknown): LedgeError | null {
   return walk(payload, 0);
 }
 
+/** Tier-2 internal surface roster: names a dispatcher may serve WITHOUT a wire-registry
+ *  row (E3-APP internal commands/queries — Recent Activity, favorites, redo, topic
+ *  teaching). Membership is the whole contract: wire names never appear here and
+ *  internal names never appear in MESSAGE_REGISTRY (parity law: wire ∩ internal = ∅). */
+export interface InternalRoster {
+  readonly commands: readonly string[];
+  readonly queries: readonly string[];
+}
+
+/**
+ * E3-APP · Internal (Tier-2) message validation — the same §3.1 envelope-shape laws as
+ * the wire path (version, kind, cid, senderContext, contractHash, payload guards + zone-1
+ * refusal), but membership is checked against the internal roster instead of the frozen
+ * wire registry, and the payload passes through UN-normalized: internal names have no §3
+ * schema rows, so the handler registration is the typed seam (it re-checks its own
+ * payload fields on extraction). Unknown / wrong-side names resolve exactly like the
+ * wire law: unknown ⇒ ignored, kind lying about its roster side ⇒ rejected.
+ */
+export function validateInternalMessage(
+  raw: unknown,
+  opts: { readonly zone: MessageZone; readonly roster: InternalRoster },
+): ValidationOutcome {
+  if (typeof raw !== 'object' || raw === null) {
+    return { type: 'rejected', error: malformed('envelope-not-record') };
+  }
+  const e = raw as Record<string, unknown>;
+  if (e['v'] !== CONTRACT_V) {
+    return {
+      type: 'rejected',
+      error: ledgeError('E_FORMAT_UNKNOWN', { what: 'contract-v', v: String(e['v']) }),
+    };
+  }
+  const kind = e['kind'];
+  if (kind !== 'command' && kind !== 'query') {
+    // Internal surface serves mutations/reads only — an inbound event/stream or a
+    // non-string kind here is noise (ignored) or malformation (rejected), as on wire.
+    if (typeof kind !== 'string')
+      return { type: 'rejected', error: malformed('kind', String(kind)) };
+    const nameForLog = typeof e['name'] === 'string' ? e['name'] : '';
+    return { type: 'ignored', reason: 'unknown-name', name: nameForLog };
+  }
+  const name = e['name'];
+  if (typeof name !== 'string') {
+    return { type: 'rejected', error: malformed('name') };
+  }
+  const onCommandSide = opts.roster.commands.includes(name);
+  const onQuerySide = opts.roster.queries.includes(name);
+  if (!onCommandSide && !onQuerySide) return { type: 'ignored', reason: 'unknown-name', name };
+  const rosterKind = onCommandSide ? 'command' : 'query';
+  // Internal names are SW-only by law: a consented page context (zone1) must never
+  // reach them — identical refusal shape to the wire zone-1 law.
+  if (opts.zone === 'zone1') {
+    return {
+      type: 'rejected',
+      error: ledgeError('E_CAPABILITY', { zone: 'zone1', name, what: 'not-allowlisted' }),
+    };
+  }
+  if (rosterKind !== kind) {
+    return { type: 'rejected', error: malformed('kind-mismatch-with-registry', name) };
+  }
+  if (!isId(e['cid'])) return { type: 'rejected', error: malformed('cid') };
+  const senderContext = e['senderContext'];
+  if (
+    typeof senderContext !== 'string' ||
+    !(SENDER_CONTEXTS as readonly string[]).includes(senderContext)
+  ) {
+    return { type: 'rejected', error: malformed('senderContext') };
+  }
+  if (typeof e['contractHash'] !== 'string' || e['contractHash'].length === 0) {
+    return { type: 'rejected', error: malformed('contractHash') };
+  }
+  if (!('payload' in e)) return { type: 'rejected', error: malformed('payload-missing') };
+
+  const guard = checkPayloadGuards(e['payload']);
+  if (guard !== null) return { type: 'rejected', error: guard };
+
+  const payloadObj =
+    e['payload'] === null || typeof e['payload'] !== 'object' || Array.isArray(e['payload'])
+      ? null
+      : (e['payload'] as Record<string, unknown>);
+  if (payloadObj === null) return { type: 'rejected', error: malformed('payload-not-object') };
+
+  // No registry row ⇒ no schema normalization; the handler is the typed seam.
+  const spec: MessageSpec = { kind, family: rosterKind, availability: 'v1', payload: {} };
+  return {
+    type: 'ok',
+    message: {
+      v: CONTRACT_V,
+      kind,
+      family: rosterKind,
+      availability: 'v1',
+      name,
+      cid: e['cid'] as MessageEnvelope['cid'],
+      senderContext: senderContext as SenderContext,
+      payload: payloadObj,
+      spec,
+    },
+  };
+}
+
 export function validateMessage(
   raw: unknown,
   opts: { readonly zone: MessageZone },

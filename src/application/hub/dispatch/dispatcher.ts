@@ -6,7 +6,12 @@
 // ctx.notifyPending). The transport surface (chrome runtime wiring, E3-T* tier)
 // renders these into runtime messages; SW-internal callers use terminalOf().
 import { err, ledgeError, type LedgeError, type Result } from '@/shared-kernel/result/index.js';
-import { validateMessage, type ValidatedMessage } from '../../contracts/validate.js';
+import {
+  validateInternalMessage,
+  validateMessage,
+  type InternalRoster,
+  type ValidatedMessage,
+} from '../../contracts/validate.js';
 import type { MessageZone } from '../../contracts/envelope.js';
 import { operationLabel, toApplicationError } from '../../errors/index.js';
 import { createAppEventBus, type AppEventBus } from './app-events.js';
@@ -35,6 +40,13 @@ export interface DispatcherDeps<S> {
   readonly cancellation?: CancellationRegistry | undefined;
   readonly dedupe?: CidDedupeCache | undefined;
   readonly now?: () => number;
+  /**
+   * Tier-2 internal surface (E3-APP): when set, dispatch validates against this
+   * roster — envelope-shape laws only, payload un-normalized (the handler is the
+   * typed seam) — and serves ONLY those names. Wire-registry names are not routed
+   * here (the composition root routes by name; parity law keeps the sets disjoint).
+   */
+  readonly internal?: InternalRoster | undefined;
 }
 
 export interface Dispatcher {
@@ -231,7 +243,10 @@ export const createDispatcher = <S>(deps: DispatcherDeps<S>): Dispatcher => {
 
   return {
     dispatch: (raw, zone) => {
-      const validated = validateMessage(raw, { zone });
+      const validated =
+        deps.internal !== undefined
+          ? validateInternalMessage(raw, { zone, roster: deps.internal })
+          : validateMessage(raw, { zone });
       if (validated.type === 'ignored')
         return { outcome: 'ignored', reason: validated.reason, name: validated.name };
       if (validated.type === 'rejected') return { outcome: 'rejected', error: validated.error };

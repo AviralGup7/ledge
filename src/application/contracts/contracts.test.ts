@@ -13,6 +13,7 @@ import {
   contractHashOf,
   makeHello,
   specKeys,
+  validateInternalMessage,
   validateMessage,
   ZONE1_ALLOWLIST,
   type MessageEnvelope,
@@ -254,5 +255,98 @@ describe('E1-T11 handshake (ADR-010 handshake-checked channels)', () => {
     ]) {
       expect(checkHello(g, local).status).toBe('rejected');
     }
+  });
+});
+
+// ─── E3-APP internal (Tier-2) roster validation ────────────────────────────────
+describe('E3-APP validateInternalMessage', () => {
+  const roster = {
+    commands: ['MarkFavorite', 'RenameWorkspaceInternal'],
+    queries: ['GetActivity', 'GetRecentWindows'],
+  } as const;
+  const internalEnv = (name: string, kind: 'command' | 'query', payload: unknown) =>
+    env(name, kind, payload);
+
+  it('serves a roster command: validated, payload passes through UN-normalized', () => {
+    const payload = { id: '  padded-key-not-trimmed  ', extraUnknown: 7 };
+    const outcome = validateInternalMessage(internalEnv('MarkFavorite', 'command', payload), {
+      ...zone0,
+      roster,
+    });
+    expect(outcome.type).toBe('ok');
+    if (outcome.type !== 'ok') return;
+    expect(outcome.message.name).toBe('MarkFavorite');
+    expect(outcome.message.family).toBe('command');
+    expect(outcome.message.availability).toBe('v1');
+    // No §3 schema row ⇒ no stripping/trimming — the handler is the typed seam.
+    expect(outcome.message.payload).toEqual(payload);
+    expect(outcome.message.spec.kind).toBe('command');
+  });
+
+  it('serves a roster query with kind agreement', () => {
+    const outcome = validateInternalMessage(internalEnv('GetActivity', 'query', { limit: 2 }), {
+      ...zone0,
+      roster,
+    });
+    expect(outcome.type).toBe('ok');
+    if (outcome.type !== 'ok') return;
+    expect(outcome.message.kind).toBe('query');
+  });
+
+  it('unknown internal name ⇒ ignored (forward-compat law, same as wire)', () => {
+    const outcome = validateInternalMessage(internalEnv('NotOnTheRoster', 'query', {}), {
+      ...zone0,
+      roster,
+    });
+    expect(outcome).toEqual({ type: 'ignored', reason: 'unknown-name', name: 'NotOnTheRoster' });
+  });
+
+  it('kind lying about its roster side ⇒ kind-mismatch rejection', () => {
+    const outcome = validateInternalMessage(internalEnv('GetActivity', 'command', {}), {
+      ...zone0,
+      roster,
+    });
+    expect(outcome.type).toBe('rejected');
+    if (outcome.type !== 'rejected') return;
+    expect(outcome.error.code).toBe('E_OUTPUT_MALFORMED');
+    expect(outcome.error.details?.['what']).toBe('kind-mismatch-with-registry');
+  });
+
+  it('zone1 may never reach internal names (same refusal shape as the wire law)', () => {
+    const outcome = validateInternalMessage(internalEnv('MarkFavorite', 'command', {}), {
+      ...zone1,
+      roster,
+    });
+    expect(outcome.type).toBe('rejected');
+    if (outcome.type !== 'rejected') return;
+    expect(outcome.error.code).toBe('E_CAPABILITY');
+  });
+
+  it('inbound event/stream kinds are ignored, never served', () => {
+    const outcome = validateInternalMessage(
+      { ...env('GetActivity', 'event', {}) },
+      { ...zone0, roster },
+    );
+    expect(outcome).toEqual({ type: 'ignored', reason: 'unknown-name', name: 'GetActivity' });
+  });
+
+  it('envelope-shape laws still bind: bad cid, version skew, payload guards', () => {
+    const badCid = validateInternalMessage(
+      { ...internalEnv('MarkFavorite', 'command', {}), cid: 'nope' },
+      { ...zone0, roster },
+    );
+    expect(badCid.type).toBe('rejected');
+    const skew = validateInternalMessage(
+      { ...internalEnv('MarkFavorite', 'command', {}), v: CONTRACT_V + 1 },
+      { ...zone0, roster },
+    );
+    expect(skew.type).toBe('rejected');
+    if (skew.type === 'rejected') expect(skew.error.code).toBe('E_FORMAT_UNKNOWN');
+    const overWide = validateInternalMessage(
+      internalEnv('MarkFavorite', 'command', { ids: Array.from({ length: 10_001 }, () => 'x') }),
+      { ...zone0, roster },
+    );
+    expect(overWide.type).toBe('rejected');
+    if (overWide.type === 'rejected') expect(overWide.error.code).toBe('E_OUTPUT_MALFORMED');
   });
 });
