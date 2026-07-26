@@ -50,17 +50,17 @@
   },
   "devDependencies": {
     "@puppeteer/browsers": "3.0.6",
-    "@types/chrome": "^0.0.300",
-    "dependency-cruiser": "^16.10.0",
-    "eslint": "^9.20.0",
+    "@types/chrome": "^0.2.2",
+    "dependency-cruiser": "^18.1.0",
+    "eslint": "^10.8.0",
     "eslint-plugin-ledge": "file:tools/eslint-plugin-ledge",
     "fake-indexeddb": "^6",
     "fast-check": "^4.0.0",
     "prettier": "^3.5.0",
     "puppeteer-core": "25.3.0",
-    "typescript": "^5.7.2",
+    "typescript": "^7.0.2",
     "typescript-eslint": "^8.24.0",
-    "vitest": "^3.0.0",
+    "vitest": "^4.1.10",
     "wxt": "^0.20.0"
   }
 }
