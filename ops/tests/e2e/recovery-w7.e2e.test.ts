@@ -52,6 +52,9 @@ const NEGATIVE_OBSERVE_MS = 6_000;
 const INSTALL_SETTLE_MS = 1_000;
 const SIGKILL_EXIT_WAIT_MS = 10_000;
 const SCOPE_TAB_COUNT = 3;
+/** E6-T02: chrome's session backend flushes Recently Closed on an interval, not
+ *  per-close — the crash must land AFTER the flush or the candidate row is lost. */
+const SESSION_SYNC_MS = 15_000;
 
 // ─── copy deck (the catalog is law; expectations are RENDERED from it, never
 //     hand-typed — a copy drift breaks this lane in the exact place it drifts) ──
@@ -406,6 +409,17 @@ describe('E6-T01 real-restart e2e', () => {
         ],
       });
 
+      // ── E6-T02: a REAL Recently Closed row, created and closed gracefully
+      //    BEFORE the crash survives in the profile — the next boot's incident
+      //    snapshot must carry it as an unmatched cross-check candidate (its URL
+      //    matches no seeded live-scope row; F1 also demands every seeded scope
+      //    url stays OUT of the panel even if chrome backlogs them somewhere).
+      const candidateUrl = `${origin}/p4`;
+      const candidatePage = await browser.newPage();
+      await candidatePage.goto(candidateUrl, { waitUntil: 'load' });
+      await candidatePage.close();
+      await sleep(SESSION_SYNC_MS); // the backend's flush must precede the kill
+
       // ── REAL browser death (no shutdown ceremony, no marker disarm).
       await hardKill(browser);
       browser = undefined;
@@ -469,18 +483,41 @@ describe('E6-T01 real-restart e2e', () => {
         renderCopy('msg.recovery.note-deferred', { count: 1 }),
       );
 
+      // ── E6-T02 candidates panel: the boot-TIME snapshot of the pre-kill close.
+      //    CONTAINS semantics (the real browser may backlog other crash-side
+      //    rows — only the targeted row is toggled); the seeded scope urls are
+      //    FORBIDDEN (F1: a matched row confirms scope, it never campaigns).
+      await cardPage.waitForSelector('[data-panel="recovery-candidates"]', {
+        timeout: CARD_WAIT_MS,
+      });
+      const candidates = await cardPage.evaluate(() =>
+        [...document.querySelectorAll('[data-line="recovery-candidate"]')].map(
+          (li) => li.getAttribute('data-url') ?? '',
+        ),
+      );
+      expect(candidates).toContain(candidateUrl);
+      for (const url of urls) expect(candidates).not.toContain(url);
+      const head = await cardPage.evaluate(
+        () => document.querySelector('[data-line="recovery-candidates-head"]')?.textContent ?? '',
+      );
+      expect(head).toBe(renderCopy('msg.recovery.candidates-head', { count: candidates.length }));
+
+      // ── confirm-before-restore: only the toggled row may ride the put-back.
+      await cardPage.click(`[data-action="include-candidate"][data-url="${candidateUrl}"]`);
+
       // ── put-back: the W7 act itself. Three REAL browser tabs must return
-      //    with exactly the seeded URLs; the card resolves; the slot settles.
+      //    with exactly the seeded URLs PLUS the one confirmed candidate as a
+      //    plain tab; the card resolves; the slot settles.
       await cardPage.click('.recovery-card [data-action="put-back"]');
       await waitFor(
-        () => serverTargets(browser as Browser, origin).length === SCOPE_TAB_COUNT,
+        () => serverTargets(browser as Browser, origin).length === SCOPE_TAB_COUNT + 1,
         RESOLVED_WAIT_MS,
-        'three reopened browser tabs',
+        'four reopened browser tabs (3 mission + 1 candidate)',
       );
       const reopened = serverTargets(browser, origin)
         .map((t) => t.url())
         .sort();
-      expect(reopened).toEqual([...urls].sort());
+      expect(reopened).toEqual([...urls, candidateUrl].sort());
 
       await cardPage.waitForSelector('[data-card="recovery-resolved"]', {
         timeout: RESOLVED_WAIT_MS,

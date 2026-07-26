@@ -123,9 +123,11 @@ same keys.
   block (snapshot render/hide, toggle arming, payload shape) — unit lane
   827/827; contract lane 51 pass + 5 skip (payload fixtures: additive-tolerant,
   old shapes pass unchanged).
-- e2e (real-browser lane, Slice E — in flight at this checkpoint): scenario A
-  extension — a real Recently Closed row closed BEFORE the SIGKILL should arrive
-  in the next boot's snapshot, panel-visible after relaunch, toggle-in ⇒
-  put-back opens it as a plain extra tab. (chrome.sessions persistence across a
-  hard kill is observable, not contractual — the unit lane owns the LAW proofs;
-  the e2e row proves the FLOW on real Chromium.)
+- e2e (real-browser lane, real Chromium 151.0.7922.47): scenario A extended and
+  GREEN 2/2 — a real Recently Closed row closed 15 s BEFORE the SIGKILL survived
+  the profile kill, arrived in the relaunch boot's incident snapshot, rendered in
+  the panel (seeded scope urls absent per F1, head copy exact from the catalog);
+  toggled-in ⇒ put-back opened it as a plain fourth tab; scenario B's negative
+  gate still holds. chrome.sessions persistence across the hard kill proved
+  marginal-safe in practice (the unit lane owns the LAW proofs; this lane proves
+  the FLOW).
