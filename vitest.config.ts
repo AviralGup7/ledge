@@ -59,7 +59,13 @@ export default defineConfig({
         resolve: projectResolve,
         test: {
           name: 'unit',
-          include: ['src/**/*.test.ts', 'ops/tests/unit/**/*.test.ts'],
+          include: [
+            'src/**/*.test.ts',
+            'ops/tests/unit/**/*.test.ts',
+            // E7-T03 · the §7.4 zero-defect a11y suite rides the unit lane — the
+            // gate stays cheap and mandatory on every `pnpm test` (F2 ruling).
+            'ops/tests/a11y/**/*.test.ts',
+          ],
           // Property suites are their own lane (FC_NUM_RUNS setup); never double-run here.
           // Chaos suites are their own lane (E2-T09; EES §8 gate naming) — `pnpm test:chaos`.
           exclude: ['**/*.property.test.ts', '**/*.chaos.test.ts'],

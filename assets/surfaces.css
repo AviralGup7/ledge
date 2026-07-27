@@ -88,6 +88,42 @@ body {
   }
 }
 
+/* High contrast (Spec §4.5 P0: a mode, not a theme) — when the OS asks for more
+   contrast the surface thickens borders/focus instead of recoloring hastily. */
+@media (prefers-contrast: more) {
+  :root {
+    --l-line: var(--l-ink-soft);
+  }
+
+  .btn {
+    border-width: 2px;
+  }
+
+  :focus-visible {
+    outline-width: 3px;
+  }
+}
+
+/* Forced colors (Windows HC): defer to the system palette, never paint over it
+   — borders resolve to ButtonBorder, focus to Highlight, pressed state too. */
+@media (forced-colors: active) {
+  .btn {
+    border-color: ButtonBorder;
+  }
+
+  .btn[aria-pressed='true'],
+  .btn-primary {
+    background: Highlight;
+    border-color: Highlight;
+    color: HighlightText;
+    forced-color-adjust: none;
+  }
+
+  :focus-visible {
+    outline-color: Highlight;
+  }
+}
+
 .surface {
   max-width: 46rem;
   margin: 0 auto;
