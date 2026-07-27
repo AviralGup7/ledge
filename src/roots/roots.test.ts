@@ -256,6 +256,137 @@ describe('offscreen-root — workroom graph (ADR-008/025)', () => {
   });
 });
 
+describe('E8-T01 · offscreen-root — §3.6 job executor (offer ⇒ claim/beats/result)', () => {
+  const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
+
+  const validOffer = (payload?: Record<string, unknown>): MessageEnvelope => ({
+    v: CONTRACT_V,
+    kind: 'event',
+    name: 'JobOffer',
+    cid: makeEnv(4, 2).eventId,
+    senderContext: 'sw',
+    payload: {
+      jobId: makeEnv(7, 1).eventId,
+      kind: 'mission-name',
+      payloadRef: { subjectId: makeEnv(8, 8).eventId, input: {}, stateHash: 'h' },
+      lane: 'maintenance',
+      deadlineMs: 30_000,
+      ...payload,
+    },
+    contractHash: computeContractHash(),
+  });
+
+  const artifact = {
+    value: '12 tabs · docs & time · 4:32 pm',
+    confidence: 0.55,
+    provider: 'heuristic',
+    modelClass: 'heuristic-domain-time-v1',
+    schemaV: 1,
+  } as const;
+
+  it('R1: an SW offer earns Claimed + start-beat, then end-beat + JobResult(ok, artifact)', async () => {
+    const outbox: MessageEnvelope[] = [];
+    let offeredSubject = '';
+    const graph = composeWorkroomGraph({
+      transport: { send: (m) => outbox.push(m) },
+      executor: {
+        execute: (job) => {
+          offeredSubject = job.payloadRef.subjectId;
+          return Promise.resolve({ artifact });
+        },
+      },
+    });
+    const outcome = graph.dispatch(validOffer());
+    expect(outcome.type).toBe('ok');
+    // Synchronous lifecycle: Claimed + beat(0) before the executor settles.
+    expect(outbox.map((m) => m.name)).toEqual(['JobClaimed', 'JobHeartbeat']);
+    const offer = validOffer().payload as { jobId: string; payloadRef: { subjectId: string } };
+    expect((outbox[0]?.payload as { workerTag: string }).workerTag).toBe('offscreen');
+    await flush();
+    const names = outbox.map((m) => m.name);
+    expect(names).toEqual(['JobClaimed', 'JobHeartbeat', 'JobHeartbeat', 'JobResult']);
+    const result = outbox.at(-1)?.payload as { jobId: string; ok: boolean; artifact: object };
+    expect(result.ok).toBe(true);
+    expect(result.jobId).toBe(offer.jobId);
+    expect(result.artifact).toMatchObject({ provider: 'heuristic', confidence: 0.55 });
+    // The executor received the offer's payloadRef untouched (SW validates after).
+    expect(offeredSubject).toBe(offer.payloadRef.subjectId);
+    // Contract-shape on every egress envelope.
+    for (const m of outbox) {
+      expect(m.senderContext).toBe('offscreen');
+      expect(isId(m.cid)).toBe(true);
+      expect(m.contractHash).toBe(computeContractHash());
+    }
+  });
+
+  it('R2: an executor failure answers JobResult(ok:false, failureClass) — round-trip closes', async () => {
+    const outbox: MessageEnvelope[] = [];
+    const graph = composeWorkroomGraph({
+      transport: { send: (m) => outbox.push(m) },
+      executor: { execute: () => Promise.resolve({ failureClass: 'provider-error' }) },
+    });
+    graph.dispatch(validOffer());
+    await flush();
+    const result = outbox.at(-1)?.payload as { ok: boolean; failureClass: string };
+    expect(outbox.at(-1)?.name).toBe('JobResult');
+    expect(result.ok).toBe(false);
+    expect(result.failureClass).toBe('provider-error');
+  });
+
+  it('R3: a THROWING executor is still closed with a failure JobResult (never wedged)', async () => {
+    const outbox: MessageEnvelope[] = [];
+    const graph = composeWorkroomGraph({
+      transport: { send: (m) => outbox.push(m) },
+      executor: {
+        execute: () => Promise.reject(new Error('wasm exploded')),
+      },
+    });
+    expect(() => graph.dispatch(validOffer())).not.toThrow();
+    await flush();
+    const result = outbox.at(-1)?.payload as { ok: boolean; failureClass: string };
+    expect(outbox.at(-1)?.name).toBe('JobResult');
+    expect(result.ok).toBe(false);
+    expect(result.failureClass).toBe('provider-error');
+  });
+
+  it('R4: hostile offers earn silence — schema-broken, tampered cids, non-SW senders', async () => {
+    const outbox: MessageEnvelope[] = [];
+    let executions = 0;
+    const graph = composeWorkroomGraph({
+      transport: { send: (m) => outbox.push(m) },
+      executor: {
+        execute: () => {
+          executions += 1;
+          return Promise.resolve({ artifact });
+        },
+      },
+    });
+    const brokenJobId = validOffer({ jobId: 'not-a-ulid' });
+    const alienSender = { ...validOffer(), senderContext: 'guardian' } as MessageEnvelope;
+    const garbagePayload = { ...validOffer(), payload: 'rm -rf' } as unknown as MessageEnvelope;
+    const outcomes = [brokenJobId, alienSender, garbagePayload].map((o) => graph.dispatch(o));
+    expect(outcomes[0]?.type).toBe('rejected');
+    expect(outcomes[1]?.type).toBe('ok'); // validated, but direction law denies work
+    expect(outcomes[2]?.type).toBe('rejected');
+    await flush();
+    expect(executions).toBe(0);
+    expect(outbox).toHaveLength(0);
+  });
+
+  it('R5: JobCancel needs no answer — best-effort law keeps dispatch total', () => {
+    const outbox: MessageEnvelope[] = [];
+    const graph = composeWorkroomGraph({ transport: { send: (m) => outbox.push(m) } });
+    const cancel: MessageEnvelope = {
+      ...validOffer(),
+      name: 'JobCancel',
+      payload: { jobId: makeEnv(3, 3).eventId },
+    };
+    const outcome = graph.dispatch(cancel);
+    expect(outcome.type).toBe('ok');
+    expect(outbox).toHaveLength(0);
+  });
+});
+
 describe('page-root — quiet-page graph (ADR-005 authority-free)', () => {
   it('composes contract identity only — no storage, no listeners', () => {
     const graph = composeQuietPageGraph();

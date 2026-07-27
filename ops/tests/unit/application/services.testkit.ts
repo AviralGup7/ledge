@@ -383,6 +383,10 @@ export const makeServices = async (
      *  opens the store — the factory receives it during composition. */
     readonly exporterFactory?: ((engine: StorageEnginePort) => ServiceDeps['exporter']) | undefined;
     readonly search?: ServiceDeps['search'];
+    /** E8-T01 AI pipeline seams (queue/hosts/breakers/window/scheduler). The
+     *  harness owns no defaults — aiJobs stays absent unless a suite composes
+     *  the pipeline, exactly like the roots posture (absent ⇒ honest grey). */
+    readonly ai?: ServiceDeps['ai'];
   } = {},
 ): Promise<ServicesHarness> => {
   const engine = await openEngine();
@@ -445,6 +449,7 @@ export const makeServices = async (
         ? { exporter: opts.exporterFactory(engine) }
         : {}),
     ...(opts.search !== undefined ? { search: opts.search } : {}),
+    ...(opts.ai !== undefined ? { ai: opts.ai } : {}),
   });
 
   let seedSeq = 0;

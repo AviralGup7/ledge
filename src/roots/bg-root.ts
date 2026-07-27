@@ -35,6 +35,9 @@ import type { JournalPort } from '@/application/ports/journal.port.js';
 import type { IntentLedgerPort } from '@/application/ports/intent-ledger.port.js';
 import type { ProjectionEnginePort } from '@/application/ports/projection-engine.port.js';
 import { CONTRACT_V } from '@/application/contracts/envelope.js';
+import type { MessageEnvelope } from '@/application/contracts/envelope.js';
+import { validateMessage } from '@/application/contracts/validate.js';
+import type { OffscreenPort } from '@/application/ports/offscreen.port.js';
 import type { SnapshotsPort } from '@/application/ports/snapshots.port.js';
 import type { StoreName } from '@/application/ports/storage-engine.port.js';
 import type { StorageEnginePort } from '@/application/ports/storage-engine.port.js';
@@ -48,11 +51,20 @@ import {
 } from '@/application/usecases/handlers.js';
 import { createServices, type AppServices } from '@/application/usecases/index.js';
 import {
+  createChromeOffscreenAdapter,
   createChromeSessionsAdapter,
   createChromeStorageAreaAdapter,
   createChromeTabsAdapter,
   createChromeWindowsAdapter,
 } from '@/infrastructure/chrome/index.js';
+import {
+  createAiJobQueue,
+  createAiLadder,
+  createHeuristicNamer,
+  createSwLocalWorkerHost,
+  createWorkroomHostPair,
+  WORKROOM_EVENT_NAMES,
+} from '@/infrastructure/ai/index.js';
 import { createIntentLedger } from '@/infrastructure/intents/ledger.js';
 import { createJournal } from '@/infrastructure/journal/index.js';
 import { createV1ProjectionEngine } from '@/infrastructure/projections/index.js';
@@ -189,6 +201,22 @@ export interface BackgroundRuntimeDeps {
   /** Marker storage seam (default: the lazy-ambient chrome adapter — degrades to
    *  the 'undetectable' signal in chrome-less hosts, never a boot crash). */
   readonly storageArea?: StorageAreaPort | undefined;
+  /** E3-T07 offscreen seam (default: the lazy ambient adapter — capability-absent
+   *  posture in chrome-less hosts is honest, never a boot crash). The workroom
+   *  host pair rides this port (E8-T01). */
+  readonly offscreen?: OffscreenPort | undefined;
+  /** E8-T01 lane-window override seam (tests open background; production's
+   *  conservative default holds background claims until E3-T04's idle adapter). */
+  readonly aiWindow?:
+    | {
+        readonly maintenanceOk: () => Promise<boolean>;
+        readonly backgroundOk: () => Promise<boolean>;
+      }
+    | undefined;
+  /** E8-T01 workroom-lane kill switch for composed hosts (undefined = live). */
+  readonly aiDisabled?: boolean | undefined;
+  /** §3.6 transport seam (default: the guarded full-envelope runtime send). */
+  readonly workroomSend?: ((message: MessageEnvelope) => void) | undefined;
 }
 
 export interface BackgroundGraph {
@@ -288,6 +316,18 @@ const PLATFORM_SCHEDULER: { readonly after: (delayMs: number, fn: () => void) =>
       clearTimeout(t);
     };
   },
+};
+
+/** E8-T01 §3.6 default transport: full-envelope runtime send toward the workroom
+ *  (the stream broadcast's reduced envelope would fail the workroom's §3.1
+ *  boundary validators — the §3.6 family travels COMPLETE). Silence when no doc
+ *  listens; a transport oddity never reaches the authority path (§2.6). */
+const workroomBroadcast = (message: MessageEnvelope): void => {
+  try {
+    void chrome.runtime.sendMessage(message);
+  } catch {
+    // No workroom listening (killed/absent): the lease layer owns recovery.
+  }
 };
 
 /** §3.5 default transport: broadcast to listening surfaces; silence when none. */
@@ -461,6 +501,37 @@ const buildRuntime = (
     deps.importBytesStage ??
     (stageIdb !== undefined ? createImportBytesStage({ idb: stageIdb, now }) : undefined);
   const ledger = createIntentLedger({ engine: storage, journal });
+
+  // E8-T01 · the AI pipeline graph (EES §2.12): durable queue over the storage
+  // engine (Blueprint §2.10 "storage (jobs)" dependency — writer-family scope:
+  // ai_jobs rows only, ADR-noted), rung-1 heuristic ladder + breaker evidence,
+  // SW-local host always, workroom §3.6 pair when the offscreen port answers.
+  const aiQueue = createAiJobQueue({ engine: storage });
+  const aiLadder = createAiLadder({ providers: [createHeuristicNamer()] });
+  const aiSwLocal = createSwLocalWorkerHost({ ladder: aiLadder });
+  const offscreenPort = deps.offscreen ?? createChromeOffscreenAdapter();
+  const aiWorkroom =
+    deps.aiDisabled === true
+      ? null
+      : createWorkroomHostPair({
+          offscreen: offscreenPort,
+          encode: ({ name, payload }) => ({
+            v: CONTRACT_V,
+            kind: 'event',
+            name,
+            cid: ids.nextId(),
+            senderContext: 'sw',
+            payload,
+            contractHash: computeContractHash(),
+          }),
+          send: deps.workroomSend ?? workroomBroadcast,
+        });
+  const aiWindow = deps.aiWindow ?? {
+    maintenanceOk: () => Promise.resolve(true),
+    // §10 lane doctrine: background claims only in PROVEN idle+battery windows —
+    // conservative until E3-T04's idle adapter is the live source.
+    backgroundOk: () => Promise.resolve(false),
+  };
   const tabs = deps.tabs ?? createChromeTabsAdapter();
   // E6-T02: the services-tier cross-check seam — same E3-T03 read-only adapter
   // the recovery boot act's reconciler seam uses (lazy ambient, chrome-less safe).
@@ -474,7 +545,35 @@ const buildRuntime = (
       engine: storage,
       ids,
       now,
-      probes: { engine: storage, journal, projections, ledger, search: searchRank, now },
+      probes: {
+        engine: storage,
+        journal,
+        projections,
+        ledger,
+        search: searchRank,
+        now,
+        // E8-T01: ai-lanes + offscreen-spawn leave 'unwired' grey behind these
+        // services-lazy seams — stats read services.aiJobs live when booted.
+        aiLanes: {
+          stats: async () => {
+            const svc = servicesRef?.aiJobs;
+            if (svc === undefined)
+              return err(ledgeError('E_CAPABILITY', { operation: 'ai-lanes', reason: 'unbooted' }));
+            return svc.stats();
+          },
+        },
+        offscreen: {
+          capability: () => offscreenPort.capability(),
+          stats: async () => {
+            const svc = servicesRef?.aiJobs;
+            if (svc === undefined)
+              return err(
+                ledgeError('E_CAPABILITY', { operation: 'offscreen-spawn', reason: 'unbooted' }),
+              );
+            return svc.stats();
+          },
+        },
+      },
     });
   const services = createServices({
     engine: storage,
@@ -505,6 +604,14 @@ const buildRuntime = (
     exporter,
     ...(importBytesStage !== undefined ? { importBytesStage } : {}),
     search: searchRank,
+    ai: {
+      queue: aiQueue,
+      swLocal: aiSwLocal,
+      workroom: aiWorkroom,
+      breakers: aiLadder.breakerReports,
+      window: aiWindow,
+      scheduler: PLATFORM_SCHEDULER,
+    },
   });
   servicesRef = services;
 
@@ -596,6 +703,22 @@ const buildRuntime = (
       // Internal Tier-2 names route to the internal registry by name presence —
       // wire registries never serve them (parity law: wire ∩ internal = ∅).
       const name = (raw as { name?: unknown } | null)?.name;
+      // E8-T01 §3.6 graft: workroom-family inbound envelopes are internal traffic,
+      // validated first (§3.1 rule a) and demuxed to the AI service inbox before
+      // the command dispatcher ever sees them. Transport totality holds: every
+      // send still gets exactly one (ignored) answer.
+      if (typeof name === 'string' && (WORKROOM_EVENT_NAMES as readonly string[]).includes(name)) {
+        const outcome = validateMessage(raw, { zone });
+        const routed =
+          outcome.type === 'ok' && services.aiJobs !== undefined
+            ? services.aiJobs.inbox(outcome.message)
+            : false;
+        return {
+          outcome: 'ignored',
+          reason: routed ? 'workroom-event' : 'workroom-unrouted',
+          name,
+        };
+      }
       if (typeof name === 'string' && INTERNAL_COMMANDS.some((c) => c.name === name))
         return internal.dispatch(raw, zone);
       if (typeof name === 'string' && INTERNAL_QUERIES.some((q) => q.name === name))

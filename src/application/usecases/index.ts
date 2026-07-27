@@ -21,6 +21,8 @@ import type { RecoveryService } from './recovery.js';
 import { createRecoveryService } from './recovery.js';
 import type { PrefsService } from './prefs.js';
 import { createPrefsService } from './prefs.js';
+import type { AiJobsService } from './ai-jobs.js';
+import { createAiJobsService } from './ai-jobs.js';
 import type { TabsInternalService } from './tabs-internal.js';
 import { createTabsInternalService } from './tabs-internal.js';
 import type { ServiceDeps } from './shared/app-ctx.js';
@@ -53,6 +55,9 @@ export interface AppServices {
   readonly recovery: RecoveryService;
   readonly prefs: PrefsService;
   readonly tabs: TabsInternalService;
+  /** E8-T01 AI job pipeline service — ABSENT when deps.ai is unwired (hosts
+   *  without the AI graph; the ai-lanes probe reports honest grey there). */
+  readonly aiJobs?: AiJobsService | undefined;
 }
 
 /** One assembly, one appender (the per-device stamping law is per-GRAPH, not per-service). */
@@ -77,5 +82,6 @@ export const createServices = (deps: ServiceDeps): AppServices => {
     recovery: createRecoveryService(edge),
     prefs: createPrefsService(edge),
     tabs: createTabsInternalService(edge),
+    ...(deps.ai !== undefined ? { aiJobs: createAiJobsService(edge, deps.ai) } : {}),
   };
 };

@@ -17,12 +17,44 @@ import type { StorageEnginePort } from '@/application/ports/storage-engine.port.
 import type { TabsPort } from '@/application/ports/tabs.port.js';
 import type { WindowsPort } from '@/application/ports/windows.port.js';
 import type { SearchRankPort } from '@/application/ports/search.port.js';
+import type {
+  AiJobQueuePort,
+  AiWorkerHost,
+  ProviderBreakerReport,
+  WorkroomPair,
+} from '@/application/ports/ai-jobs.port.js';
 import type { CancelToken } from '@/application/hub/dispatch/cancellation.js';
 import type { ProgressEmitter } from '@/application/hub/dispatch/progress.js';
 import type { IngestHub } from '@/application/hub/ingest/types.js';
 import type { DeviceId } from '@/shared-kernel/identity/device-id.js';
 import type { IdGenerator, Now } from '@/shared-kernel/identity/index.js';
 import type { StreamAppender } from './stream-appender.js';
+
+/** E8-T01 · AI pipeline assembly seams (EES §2.12). Declared HERE — the service
+ *  implementation consumes them one-directionally (usecases/ai-jobs.ts → app-ctx);
+ *  the queue/host/breaker types are the port's (application-never-touches-
+ *  infrastructure proof is the import list above). */
+export interface AiJobScheduler {
+  readonly after: (delayMs: number, fn: () => void) => () => void;
+}
+
+/** §10 lane-window gate: interactive never sheds; maintenance runs freely;
+ *  background claims ONLY in caller-proven idle+battery-ok windows (conservative
+ *  default: unproven ⇒ held — E3-T04's idle adapter is the future live source). */
+export interface AiLaneWindowPort {
+  readonly maintenanceOk: () => Promise<boolean>;
+  readonly backgroundOk: () => Promise<boolean>;
+}
+
+export interface AiJobsServiceDeps {
+  readonly queue: AiJobQueuePort;
+  readonly swLocal: AiWorkerHost;
+  readonly workroom: WorkroomPair | null;
+  /** Breaker evidence seam (the ladder's reports — probe-facing, read-only). */
+  readonly breakers: () => readonly ProviderBreakerReport[];
+  readonly window: AiLaneWindowPort;
+  readonly scheduler: AiJobScheduler;
+}
 
 /** Composition-wired ports (roots fill; every member a port seam, never an impl). */
 export interface ServiceDeps {
@@ -54,6 +86,10 @@ export interface ServiceDeps {
    *  bundle). undefined ⇒ services fall back to their pre-T03 inline ring writes
    *  and getHealth answers the legacy ad-hoc dump (degrade, never fault). */
   readonly diagnostics?: DiagnosticsPort | undefined;
+  /** E8-T01 AI pipeline seams (queue + hosts + lane windows — EES §2.12).
+   *  undefined ⇒ the aiJobs service member is ABSENT (hosts without the AI graph
+   *  stay honest-grey on the ai-lanes probe; Principle 29 coherence unaffected). */
+  readonly ai?: AiJobsServiceDeps | undefined;
 }
 
 /** Per-invocation dispatch facts a service may need (never the raw wire message). */

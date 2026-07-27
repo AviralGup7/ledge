@@ -9,6 +9,23 @@ import type { ProjectionEnginePort } from '@/application/ports/projection-engine
 import type { IntentLedgerPort } from '@/application/ports/intent-ledger.port.js';
 import type { SearchRankPort } from '@/application/ports/search.port.js';
 import type { StorageEnginePort } from '@/application/ports/storage-engine.port.js';
+import type { AiServiceStats } from '@/application/ports/ai-jobs.port.js';
+import type { OffscreenCapability } from '@/application/ports/offscreen.port.js';
+import type { LedgeError, Result } from '@/shared-kernel/result/index.js';
+
+/** E8-T01 · the two v1.1 probe seams leave the 'unwired' posture when absent
+ *  (hosts without the AI graph keep honest grey — the E6 F2 ruling stands):
+ *  ai-lanes reads the service's stats evidence; offscreen-spawn reads the
+ *  capability report (reason table + observed enum drift) and the workroom's
+ *  readiness/loss posture. */
+export interface AiLanesProbeSeam {
+  readonly stats: () => Promise<Result<AiServiceStats, LedgeError>>;
+}
+
+export interface OffscreenSpawnProbeSeam {
+  readonly capability: () => Result<OffscreenCapability, LedgeError>;
+  readonly stats: () => Promise<Result<AiServiceStats, LedgeError>>;
+}
 
 export interface ProbeDeps {
   readonly engine: StorageEnginePort;
@@ -17,6 +34,8 @@ export interface ProbeDeps {
   readonly ledger: IntentLedgerPort;
   readonly search: SearchRankPort;
   readonly now: () => number;
+  readonly aiLanes?: AiLanesProbeSeam | undefined;
+  readonly offscreen?: OffscreenSpawnProbeSeam | undefined;
 }
 
 const HOURS_PER_DAY = 24;
@@ -174,12 +193,31 @@ export const createDefaultProbes = (
     };
   },
 
-  'ai-lanes': () =>
-    Promise.resolve({
-      wired: false,
-      status: 'unwired' as const,
-      fields: { tier: 'v1.1' },
-    }),
+  'ai-lanes': async () => {
+    const seam = deps.aiLanes;
+    if (seam === undefined)
+      return { wired: false, status: 'unwired' as const, fields: { tier: 'v1.1' } };
+    const stats = await seam.stats();
+    if (!stats.ok) return fail(stats.error.code);
+    const s = stats.value;
+    const depths = s.queue.lanes.map((l) => `${l.lane}:${l.queued}q/${l.claimed}c`).join(' ');
+    const open = s.breakers.filter((b) => b.state === 'open').map((b) => b.providerId);
+    const failedTotal = s.queue.lanes.reduce((acc, l) => acc + l.failed, 0);
+    const rejections = s.queue.malformedRejected + s.queue.invalidRejected;
+    return {
+      wired: true,
+      status: open.length > 0 ? ('warn' as const) : ('ok' as const),
+      fields: {
+        depths,
+        breakersOpen: open.join(',') || 'none',
+        failed: failedTotal,
+        rejected: rejections,
+        workroom: s.workroom.present
+          ? `${s.workroom.ready ? 'ready' : 'not-ready'}/losses:${s.workroom.consecutiveLosses}`
+          : 'absent',
+      },
+    };
+  },
 
   'search-index-freshness': async () => {
     const fresh = await deps.search.freshness();
@@ -197,12 +235,30 @@ export const createDefaultProbes = (
     };
   },
 
-  'offscreen-spawn': () =>
-    Promise.resolve({
-      wired: false,
-      status: 'unwired' as const,
-      fields: { tier: 'v1.1' },
-    }),
+  'offscreen-spawn': async () => {
+    const seam = deps.offscreen;
+    if (seam === undefined)
+      return { wired: false, status: 'unwired' as const, fields: { tier: 'v1.1' } };
+    const cap = seam.capability();
+    if (!cap.ok) return fail(cap.error.code);
+    const stats = await seam.stats();
+    const workroom =
+      stats.ok && stats.value.workroom.present
+        ? `${stats.value.workroom.ready ? 'ready' : 'not-ready'}/losses:${stats.value.workroom.consecutiveLosses}`
+        : 'absent';
+    return {
+      wired: true,
+      // Capability absence = degraded-posture warn, never fake green; drift
+      // evidence rides fields (the beta soak is the drift witness, E7-T06).
+      status: cap.value.apiPresent ? ('ok' as const) : ('warn' as const),
+      fields: {
+        apiPresent: cap.value.apiPresent,
+        reasonDrift: cap.value.reasonDrift.join(',') || 'none',
+        reasonClasses: Object.keys(cap.value.reasonTable).join(','),
+        workroom,
+      },
+    };
+  },
 
   'boot-report': async () => {
     try {
