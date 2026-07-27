@@ -64,20 +64,30 @@ const renderAll = (): ReadonlyMap<string, { text: string; entry: ManifestEntry }
 
 const readManifest = (): CorpusManifest => JSON.parse(readFileSync(MANIFEST_PATH, 'utf8'));
 
+/** CI-runner budget for the full 9-class census render (local ≈ 4s; shared
+ *  runners are the flake boundary — 5.6s observed on ubuntu-latest). Within
+ *  the 60s house ceiling; NEVER raised to hide a generator slowdown — a
+ *  materially slower census needs an ADR note, not a bigger number. */
+const CENSUS_BUDGET_MS = 30_000;
+
 describe('E7-T01 fixture generators · determinism covenant', () => {
-  it('the golden manifest shape is the 9-class census pinned to the corpus seed', () => {
-    const rendered = renderAll();
-    if (UPDATE) {
-      const entries: Record<string, ManifestEntry> = {};
-      for (const [key, { entry }] of rendered) entries[key] = entry;
-      const next: CorpusManifest = { schemaV: 1, seed: CORPUS_SEED, entries };
-      writeFileSync(MANIFEST_PATH, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
-    }
-    const manifest = readManifest();
-    expect(manifest.schemaV).toBe(1);
-    expect(manifest.seed).toBe(CORPUS_SEED);
-    expect(Object.keys(manifest.entries).sort()).toEqual([...rendered.keys()].sort());
-  });
+  it(
+    'the golden manifest shape is the 9-class census pinned to the corpus seed',
+    { timeout: CENSUS_BUDGET_MS },
+    () => {
+      const rendered = renderAll();
+      if (UPDATE) {
+        const entries: Record<string, ManifestEntry> = {};
+        for (const [key, { entry }] of rendered) entries[key] = entry;
+        const next: CorpusManifest = { schemaV: 1, seed: CORPUS_SEED, entries };
+        writeFileSync(MANIFEST_PATH, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
+      }
+      const manifest = readManifest();
+      expect(manifest.schemaV).toBe(1);
+      expect(manifest.seed).toBe(CORPUS_SEED);
+      expect(Object.keys(manifest.entries).sort()).toEqual([...rendered.keys()].sort());
+    },
+  );
 
   it.each(SIZE_CLASSES)('size class %i regenerates byte-identically to the golden', (size) => {
     const manifest = readManifest();
