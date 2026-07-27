@@ -49,6 +49,15 @@ const GATES = {
   'G7-determinism': { metric: 'two full passes, byte-equal digest', threshold: 1 },
   'G8-totality': { metric: 'rows judged == rows in corpus', threshold: 1 },
   'G9-machine-agreement': { metric: 'wasm machine == JS law (term verdicts)', threshold: 1 },
+  // E8-T04 amendment (append-only, docs/adr-notes/e8-summaries-v1.md):
+  'G10-fail-down-totality': {
+    metric: 'rows with SOME lawful summary (ondevice or heuristic)',
+    threshold: 1,
+  },
+  'G11-one-liner-discipline': {
+    metric: 'one-liners ≤ 120 chars ∧ no urgency punctuation',
+    threshold: 1,
+  },
 };
 
 const fail = (msg) => {
@@ -202,7 +211,81 @@ const labelWord = (domain) => {
 const heuristicTopicWords = (row) =>
   [...new Set(row.rootDomains.map(labelWord))].slice(0, 2).map((w) => w.toLowerCase());
 
-// ── 4 · The shipped machine, instantiated once ───────────────────────────────
+// ── E8-T04 · summary assembly mirrors (Spec §6.3 — G10/G11 audit the LAW at
+// corpus scale; unit lane S*/H*/L1 pins the runtime providers to it) ─────────
+const ONE_LINER_CAP = 120;
+const TERMS_RECAP_MAX = 6;
+
+const oxfordJoin = (items) => {
+  if (items.length === 0) return '';
+  if (items.length === 1) return items[0];
+  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+};
+
+/** The on-device one-liner (mirror of summarizer.ts assembleOneLiner). */
+const assembleOneLinerRef = (named, evidence, domainCount) => {
+  const domainsPhrase =
+    domainCount === 0
+      ? 'no domains recorded'
+      : `${domainCount} ${domainCount === 1 ? 'domain' : 'domains'}`;
+  const wanted = new Set([
+    evidence[0]?.frameId ?? '',
+    ...(named.mate !== undefined ? [named.mate.frameId] : []),
+  ]);
+  const terms = [];
+  const seen = new Set();
+  for (const frame of evidence) {
+    if (!wanted.has(frame.frameId)) continue;
+    for (const term of frame.matched) {
+      if (seen.has(term)) continue;
+      seen.add(term);
+      if (terms.length < TERMS_RECAP_MAX) terms.push(term);
+    }
+  }
+  for (let take = terms.length; take >= 0; take -= 1) {
+    const anchors = take === 0 ? '' : ` — anchors: ${oxfordJoin(terms.slice(0, take))}`;
+    const line = `${named.value} — across ${domainsPhrase}${anchors}`;
+    if (line.length <= ONE_LINER_CAP) return line;
+  }
+  return `${named.value} — across ${domainsPhrase}`;
+};
+
+/** The heuristic shallow summary (mirror of heuristic/summarizer.ts). */
+const heuristicSummaryRef = (row) => {
+  const tally = new Map();
+  for (const tab of row.tabs) {
+    if (
+      tab.discarded === true ||
+      typeof tab.rootDomain !== 'string' ||
+      tab.rootDomain.length === 0
+    ) {
+      continue;
+    }
+    const word = labelWord(tab.rootDomain);
+    tally.set(word, (tally.get(word) ?? 0) + 1);
+  }
+  let top = null;
+  for (const [word, count] of tally) {
+    if (top === null || count > top.count || (count === top.count && word < top.word)) {
+      top = { word, count };
+    }
+  }
+  const tabWord = row.tabCount === 1 ? 'tab' : 'tabs';
+  const base =
+    tally.size === 0
+      ? `${row.tabCount} ${tabWord} · no domains`
+      : `${row.tabCount} ${tabWord} across ${tally.size} ${tally.size === 1 ? 'domain' : 'domains'}`;
+  const presence =
+    top !== null
+      ? `, largest presence ${top.word} (${top.count} ${top.count === 1 ? 'tab' : 'tabs'})`
+      : '';
+  // Runtime drops [presence] then [time] to fit the cap; the mirror substitutes
+  // the format's worst-case time token ("12:59 pm") so the gate STAYS
+  // machine-independent (a local-time call here would poison G7 determinism).
+  const worstTime = '12:59 pm';
+  const candidates = [`${base}${presence} · ${worstTime}`, `${base} · ${worstTime}`, base];
+  return { oneLiner: candidates.find((line) => line.length <= ONE_LINER_CAP) ?? base };
+};
 if (!WebAssembly.validate(kernelBytes)) fail('kernel bytes fail WebAssembly.validate');
 const { instance } = await WebAssembly.instantiate(kernelBytes, {});
 const memory = instance.exports.memory;
@@ -271,7 +354,16 @@ const runPass = () => {
       if (frame !== undefined) acceptedWords.add(frame.display.toLowerCase());
     }
     const heuristicOk = row.accepted.length > 0 && heuristicWords.some((w) => acceptedWords.has(w));
-    perRow.push({ row, named, topicOk, heuristicOk, heuristicWords });
+    // E8-T04 (G10/G11): the §6.3 fail-down chain at corpus scale — on-device
+    // one-liner when calibrated, heuristic counts form otherwise.
+    const summary =
+      named !== null
+        ? {
+            form: 'ondevice',
+            oneLiner: assembleOneLinerRef(named, evidence, row.rootDomains.length),
+          }
+        : { form: 'heuristic', oneLiner: heuristicSummaryRef(row).oneLiner };
+    perRow.push({ row, named, topicOk, heuristicOk, heuristicWords, summary });
   }
   return { perRow, termFired, machineMismatches };
 };
@@ -289,6 +381,12 @@ const summarize = ({ perRow, termFired, machineMismatches }) => {
   const ondeviceAcc =
     nameable.filter((r) => r.named !== null && r.topicOk).length / nameable.length;
   const heuristicAcc = nameable.filter((r) => r.heuristicOk).length / nameable.length;
+  // E8-T04 (Spec §6.3): G10 fail-down totality + G11 one-liner discipline.
+  const withSummary = perRow.filter((r) => r.summary.oneLiner.length > 0).length;
+  const ondeviceSummaries = perRow.filter((r) => r.summary.form === 'ondevice').length;
+  const oneLinerViolations = perRow.filter(
+    (r) => r.summary.oneLiner.length > ONE_LINER_CAP || r.summary.oneLiner.includes('!'),
+  ).length;
   return {
     judged,
     totalRows: rows.length,
@@ -307,6 +405,9 @@ const summarize = ({ perRow, termFired, machineMismatches }) => {
     stampVocabularyPass: stampViolations === 0,
     heuristicConfidence: HEURISTIC_CONFIDENCE,
     machineMismatches,
+    failDownTotality: withSummary,
+    ondeviceSummaries,
+    oneLinerDisciplinePass: oneLinerViolations === 0,
   };
 };
 
@@ -338,6 +439,8 @@ const metrics = {
   determinismPass,
   totalityPass: firstSummary.judged === firstSummary.totalRows,
   machineAgreementPass: firstSummary.machineMismatches === 0,
+  failDownTotalityPass: firstSummary.failDownTotality === firstSummary.judged,
+  oneLinerDisciplinePass: firstSummary.oneLinerDisciplinePass,
 };
 const gateResults = [
   { id: 'G1-fabrication-zero', pass: metrics.fabrications === 0, value: metrics.fabrications },
@@ -369,6 +472,16 @@ const gateResults = [
     pass: metrics.machineAgreementPass,
     value: firstSummary.machineMismatches,
   },
+  {
+    id: 'G10-fail-down-totality',
+    pass: metrics.failDownTotalityPass,
+    value: firstSummary.failDownTotality,
+  },
+  {
+    id: 'G11-one-liner-discipline',
+    pass: metrics.oneLinerDisciplinePass,
+    value: metrics.oneLinerDisciplinePass,
+  },
 ];
 const failed = gateResults.filter((g) => !g.pass);
 const report = {
@@ -379,6 +492,7 @@ const report = {
   nameable: firstSummary.nameable,
   yieldRows: firstSummary.yieldRows,
   namedByOnDevice: firstSummary.named,
+  summariesByOnDevice: firstSummary.ondeviceSummaries,
   ondeviceAcc: metrics.precision === 0 ? 0 : firstSummary.ondeviceAcc,
   heuristicAcc: firstSummary.heuristicAcc,
   metrics,

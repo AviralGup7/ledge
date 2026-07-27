@@ -30,23 +30,29 @@ silence — the comparison deliberately denies the ML rung any free lunch.
 
 ## 2 · Gates (all nine must pass)
 
-| gate | law                                                                | threshold |
-| ---- | ------------------------------------------------------------------ | --------- |
-| G1   | fabrications (named on `expect: yield` rows)                       | `= 0`     |
-| G2   | precision (`top ∈ accepted` over named rows)                       | `≥ 0.95`  |
-| G3   | recall (named over `expect: name` rows)                            | `≥ 0.85`  |
-| G4   | term reachability (every lexicon term fires ≥ 1 row)               | `= 1`     |
-| G5   | **beats-heuristic margin** (ondeviceAcc − heuristicAcc, nameable)  | `≥ 0.50`  |
-| G6   | confidence vocabulary ⊆ `{0.88, 0.85, 0.72, 0.64}` (frozen stamps) | `= 1`     |
-| G7   | determinism (two full passes, byte-equal digest)                   | `= 1`     |
-| G8   | totality (rows judged == rows in corpus)                           | `= 1`     |
-| G9   | machine agreement (WASM machine == JS law, per-term verdicts)      | `= 1`     |
+| gate | law                                                                        | threshold |
+| ---- | -------------------------------------------------------------------------- | --------- |
+| G1   | fabrications (named on `expect: yield` rows)                               | `= 0`     |
+| G2   | precision (`top ∈ accepted` over named rows)                               | `≥ 0.95`  |
+| G3   | recall (named over `expect: name` rows)                                    | `≥ 0.85`  |
+| G4   | term reachability (every lexicon term fires ≥ 1 row)                       | `= 1`     |
+| G5   | **beats-heuristic margin** (ondeviceAcc − heuristicAcc, nameable)          | `≥ 0.50`  |
+| G6   | confidence vocabulary ⊆ `{0.88, 0.85, 0.72, 0.64}` (frozen stamps)         | `= 1`     |
+| G7   | determinism (two full passes, byte-equal digest)                           | `= 1`     |
+| G8   | totality (rows judged == rows in corpus)                                   | `= 1`     |
+| G9   | machine agreement (WASM machine == JS law, per-term verdicts)              | `= 1`     |
+| G10  | fail-down totality (rows with SOME lawful summary: ondevice or heuristic)  | `= 1`     |
+| G11  | one-liner discipline (≤ 120 chars ∧ no urgency punctuation, both families) | `= 1`     |
 
 G1 and G9 are honesty gates (never invent; the machine IS the law). G4 exists
 because an unreachable lexicon term is dead weight pretending to be
 capability. G5 is the roadmap's completion sentence made arithmetic.
 G6 pins the R7 calibration ladder end-to-end (unit lane pins the constants;
-this gate pins every emitted value).
+this gate pins every emitted value). **G10/G11 are the E8-T04 amendment**
+(append-only, `docs/adr-notes/e8-summaries-v1.md` I3): Spec §6.3's fail-down
+law runs at corpus scale — the on-device one-liner answers calibrated rows,
+the heuristic counts form answers the rest, and nothing anywhere writes
+placeholder prose.
 
 ## 3 · Current evidence (frozen at ship time)
 
@@ -60,6 +66,10 @@ sub-families):
   (gate floor `0.50`)
 - machine agreement `1.0` across every row × every term (≈ 70k per-term
   verdicts plus full-set equality per row)
+- E8-T04 amendment: fail-down totality `551/551` (532 on-device one-liners +
+  19 heuristic counts-form answers — every yield row lands the §6.3
+  name+counts form); one-liner discipline `1.0` (120-char budget ∧ calm
+  punctuation, both families)
 
 ## 4 · Trust chain (each link a mechanical gate)
 

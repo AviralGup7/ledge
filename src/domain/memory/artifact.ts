@@ -7,13 +7,16 @@
 
 /** The validated artifact, ready to become one MemoryArtifactWritten event
  *  (§5 memory_artifacts row fields; derivedFromSeqRange/artifactId/jobId are
- *  stamped by the application commit, not by the producer). */
+ *  stamped by the application commit, not by the producer). `thread` is the
+ *  E8-T04 additive companion (Spec §6.3): `value` stays the one-liner surface;
+ *  `thread` carries the archive narrative — presence is optional, shape is law. */
 export interface MemoryArtifactCandidate {
   readonly value: unknown;
   readonly confidence: number;
   readonly provider: string;
   readonly modelClass: string;
   readonly schemaV: number;
+  readonly thread?: string | undefined;
 }
 
 /** Rejection classes — counted by the pipeline (EES §2.12 "malformed ⇒ reject +
@@ -29,6 +32,9 @@ export type ArtifactValidation =
 const CONFIDENCE_MIN = 0;
 const CONFIDENCE_MAX = 1;
 const SCHEMA_V_MIN = 1;
+/** E8-T04 thread-narrative boundary (mirrors the port's budget without importing
+ *  application glue — the boundary law lives HERE, the port documents it). */
+export const ARTIFACT_THREAD_MAX_CHARS = 2_000;
 
 const isNonEmptyString = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
 
@@ -73,6 +79,17 @@ export const validateArtifactCandidate = (candidate: unknown): ArtifactValidatio
   if (!Number.isInteger(raw['schemaV']) || raw['schemaV'] < SCHEMA_V_MIN) {
     return { kind: 'rejected', rejectClass: 'invalid-value', what: 'schemaV-below-one' };
   }
+  // E8-T04 additive field law: thread is optional; when present it must be a
+  // non-empty, budget-bounded string (empty thread is a lie about absence).
+  if ('thread' in raw && raw['thread'] !== undefined) {
+    if (!isNonEmptyString(raw['thread'])) {
+      return { kind: 'rejected', rejectClass: 'invalid-value', what: 'thread-empty' };
+    }
+    if (raw['thread'].length > ARTIFACT_THREAD_MAX_CHARS) {
+      return { kind: 'rejected', rejectClass: 'invalid-value', what: 'thread-over-budget' };
+    }
+  }
+  const thread = raw['thread'];
   return {
     kind: 'valid',
     artifact: {
@@ -81,6 +98,7 @@ export const validateArtifactCandidate = (candidate: unknown): ArtifactValidatio
       provider: raw['provider'],
       modelClass: raw['modelClass'],
       schemaV: raw['schemaV'],
+      ...(typeof thread === 'string' && thread.length > 0 ? { thread } : {}),
     },
   };
 };

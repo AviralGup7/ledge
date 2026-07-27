@@ -17,13 +17,20 @@
 //    weight table; non-English corpora score nothing and yield.
 //  * ISOLATION (ADR-041 / E8-T02 lint): zero imports of mutation-capable
 //    portraits; the provider's only output type is MemoryArtifactCandidate.
-import type { AiJobKind, MissionNameInput } from '@/application/ports/ai-jobs.port.js';
+import {
+  MISSION_SUMMARY_NAME_HINT_MAX_CHARS,
+  type AiJobKind,
+  type MissionNameInput,
+  type MissionSummaryInput,
+} from '@/application/ports/ai-jobs.port.js';
 import type { MemoryArtifactCandidate } from '@/domain/memory/index.js';
 import { err, ledgeError, ok, type LedgeError, type Result } from '@/shared-kernel/result/index.js';
 import type { AiProviderPort } from '../../ladder.js';
+import { buildMissionCorpus } from './corpus.js';
 import { MODEL_CLASS } from './model-layout.js';
 import { loadOnDeviceModel, type OnDeviceModel, type OnDeviceModelHost } from './model-load.js';
-import { calibrate, forwardPass, normalizeText, ONDEVICE_MODEL_V } from './score.js';
+import { calibrate, forwardPass, ONDEVICE_MODEL_V } from './score.js';
+import { summarizeMission } from './summarizer.js';
 
 export { MODEL_CLASS, ONDEVICE_MODEL_V };
 export type { OnDeviceModelHost } from './model-load.js';
@@ -44,36 +51,60 @@ const yieldNoConfidence = (): LedgeError =>
     why: ONDEVICE_YIELD_REASON,
   });
 
-const corpusOf = (input: MissionNameInput): string => {
-  const parts: string[] = [];
-  const tabs = input.tabs ?? [];
-  for (const tab of tabs) {
-    if (tab.title.length > 0) parts.push(tab.title);
-    if (tab.discarded !== true && tab.rootDomain.length > 0) parts.push(tab.rootDomain);
-  }
-  if (parts.length === 0) parts.push(...input.rootDomains);
-  return normalizeText(parts.join(' '));
-};
+/** Envelope sanitation, shared by both capabilities (total over violations —
+ *  the envelope is trusted, but the provider never inverts the honesty law). */
+const rawDomains = (raw: Readonly<Record<string, unknown>>): readonly string[] =>
+  Array.isArray(raw['rootDomains'])
+    ? (raw['rootDomains'] as unknown[]).filter((d): d is string => typeof d === 'string')
+    : [];
+const rawTabCount = (raw: Readonly<Record<string, unknown>>): number =>
+  typeof raw['tabCount'] === 'number' && raw['tabCount'] >= 0 ? (raw['tabCount'] as number) : 0;
+const rawTakenAt = (raw: Readonly<Record<string, unknown>>): number =>
+  typeof raw['takenAt'] === 'number' ? (raw['takenAt'] as number) : 0;
+const rawTabs = (raw: Readonly<Record<string, unknown>>): MissionNameInput['tabs'] | undefined =>
+  Array.isArray(raw['tabs']) ? (raw['tabs'] as MissionNameInput['tabs']) : undefined;
 
-const createNamerFromModel = (model: OnDeviceModel): AiProviderPort => ({
+const createProviderFromModel = (model: OnDeviceModel): AiProviderPort => ({
   providerId: ONDEVICE_PROVIDER_ID,
   modelClass: MODEL_CLASS,
-  capabilities: ['mission-name'],
+  capabilities: ['mission-name', 'mission-summary'],
   run: async (job: {
     readonly kind: AiJobKind;
     readonly subjectId: string;
     readonly value: unknown;
   }): Promise<Result<MemoryArtifactCandidate, LedgeError>> => {
-    const raw = (job.value ?? {}) as Partial<MissionNameInput>;
+    const raw = (job.value ?? {}) as Readonly<Record<string, unknown>>;
+    if (job.kind === 'mission-summary') {
+      // E8-T04 (Spec §6.3): the summary shares the naming evidence law; thin
+      // evidence yields typed and the ladder falls to the heuristic form.
+      const hint = raw['missionNameHint'];
+      const input: MissionSummaryInput = {
+        tabCount: rawTabCount(raw),
+        rootDomains: rawDomains(raw),
+        takenAt: rawTakenAt(raw),
+        ...(rawTabs(raw) !== undefined ? { tabs: rawTabs(raw) } : {}),
+        ...(typeof hint === 'string' && hint.length > 0
+          ? { missionNameHint: hint.slice(0, MISSION_SUMMARY_NAME_HINT_MAX_CHARS) }
+          : {}),
+      };
+      const summary = summarizeMission(model, input);
+      if (summary.status === 'yield') return err(yieldNoConfidence());
+      return ok({
+        value: summary.oneLiner,
+        confidence: summary.confidence,
+        provider: ONDEVICE_PROVIDER_ID,
+        modelClass: MODEL_CLASS,
+        schemaV: ONDEVICE_ARTIFACT_SCHEMA_V,
+        thread: summary.thread,
+      });
+    }
     const input: MissionNameInput = {
-      tabCount: typeof raw.tabCount === 'number' && raw.tabCount >= 0 ? raw.tabCount : 0,
-      rootDomains: Array.isArray(raw.rootDomains)
-        ? raw.rootDomains.filter((d): d is string => typeof d === 'string')
-        : [],
-      takenAt: typeof raw.takenAt === 'number' ? raw.takenAt : 0,
-      ...(Array.isArray(raw.tabs) ? { tabs: raw.tabs as MissionNameInput['tabs'] } : {}),
+      tabCount: rawTabCount(raw),
+      rootDomains: rawDomains(raw),
+      takenAt: rawTakenAt(raw),
+      ...(rawTabs(raw) !== undefined ? { tabs: rawTabs(raw) } : {}),
     };
-    const corpus = corpusOf(input);
+    const corpus = buildMissionCorpus(input);
     if (corpus.length === 0) return err(yieldNoConfidence());
     const evidence = forwardPass(model.kernel, model.weights, corpus);
     const named = calibrate(evidence, input.tabCount);
@@ -109,7 +140,7 @@ export const createOnDeviceNamer = async (
   };
   const loaded = await loadOnDeviceModel(resolved);
   if (!loaded.ok) return null;
-  return createNamerFromModel(loaded.value);
+  return createProviderFromModel(loaded.value);
 };
 
 /**
@@ -132,11 +163,11 @@ export const createDeferredOnDeviceNamer = (host?: OnDeviceModelHost): AiProvide
   return {
     providerId: ONDEVICE_PROVIDER_ID,
     modelClass: MODEL_CLASS,
-    capabilities: ['mission-name'],
+    capabilities: ['mission-name', 'mission-summary'],
     run: async (job) => {
       const model = await load();
       if (!model.ok) return err(capabilityAbsentYield(model.error));
-      return createNamerFromModel(model.value).run(job);
+      return createProviderFromModel(model.value).run(job);
     },
   };
 };

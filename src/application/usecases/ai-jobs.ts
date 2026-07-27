@@ -23,15 +23,17 @@ import type {
 } from '@/application/ports/ai-jobs.port.js';
 import type { ValidatedMessage } from '@/application/contracts/validate.js';
 import type {
+  AiEnqueueInput,
   AiServiceStats,
   AiWorkerHost,
   ExecuteOutcome,
   MissionNameInput,
+  MissionSummaryInput,
 } from '@/application/ports/ai-jobs.port.js';
 import { err, ok, type LedgeError, type Result } from '@/shared-kernel/result/index.js';
 import type { AiJobsServiceDeps, ServiceEdge, UseCtx } from './shared/app-ctx.js';
 
-export type { AiServiceStats, MissionNameInput };
+export type { AiServiceStats, MissionNameInput, MissionSummaryInput };
 export type { AiJobScheduler, AiLaneWindowPort } from './shared/app-ctx.js';
 
 /** Time-boxed execution budgets per lane (MV3 citizen law §10). Interactive's
@@ -57,6 +59,14 @@ export interface AiEnqueueMissionNameInput {
   readonly subjectId: string;
   readonly lane: AiLane;
   readonly input: MissionNameInput;
+}
+
+/** E8-T04 (Spec §6.3 · Blueprint §6.15): park-time summarize job enqueue. Same
+ *  coalescing/pump law as naming — jobs version their input vocab by kind. */
+export interface AiEnqueueMissionSummaryInput {
+  readonly subjectId: string;
+  readonly lane: AiLane;
+  readonly input: MissionSummaryInput;
 }
 
 export type AiPumpDisposition =
@@ -86,6 +96,12 @@ export interface AiJobsService {
    *  the pipeline itself is the E8-T01 deliverable). Kicks the pump. */
   readonly enqueueMissionName: (
     input: AiEnqueueMissionNameInput,
+    ctx: UseCtx,
+  ) => Promise<Result<AiEnqueueOutcome, LedgeError>>;
+  /** E8-T04 park-time summaries ride the identical enqueue law (kind-keyed
+   *  coalescing keeps a queued name job and a queued summary apart). */
+  readonly enqueueMissionSummary: (
+    input: AiEnqueueMissionSummaryInput,
     ctx: UseCtx,
   ) => Promise<Result<AiEnqueueOutcome, LedgeError>>;
   /** One drain step: reclaim sweep → lane admission → claim → execute → classify. */
@@ -191,6 +207,9 @@ export const createAiJobsService = (edge: ServiceEdge, own: AiJobsServiceDeps): 
             provider: candidate.provider,
             modelClass: candidate.modelClass,
             schemaV: candidate.schemaV,
+            // E8-T04 additive: the §6.3 thread narrative rides the same artifact
+            // when the provider produced one (exactOptionalPropertyTypes law).
+            ...(candidate.thread !== undefined ? { thread: candidate.thread } : {}),
             derivedFromSeqRange: { from: job.enqueuedAtSeq, to: appender.headSeq() },
           },
         },
@@ -336,29 +355,50 @@ export const createAiJobsService = (edge: ServiceEdge, own: AiJobsServiceDeps): 
     }
   };
 
+  /** Shared enqueue law (kind is the only degree of freedom — same coalescing
+   *  key space, same pump kick, same durability hinge). */
+  const enqueueJob = async (
+    enqueue: AiEnqueueInput,
+    ctx: UseCtx,
+  ): Promise<Result<AiEnqueueOutcome, LedgeError>> => {
+    ctx.token.throwIfCancelled();
+    const enqueued = await queue.enqueue({
+      job: enqueue,
+      enqueuedAtSeq: appender.headSeq(),
+      jobId: deps.ids.nextId(),
+      now: deps.now(),
+    });
+    if (!enqueued.ok) return err(enqueued.error);
+    if (!enqueued.value.coalesced) {
+      // Pump kick (single-flight coalesced): drains run one claim per round.
+      scheduler.after(0, () => {
+        void service.pump(ctx).catch(() => undefined);
+      });
+    }
+    return ok(enqueued.value);
+  };
+
   const service: AiJobsService = {
-    enqueueMissionName: async (input, ctx) => {
-      ctx.token.throwIfCancelled();
-      const enqueued = await queue.enqueue({
-        job: {
+    enqueueMissionName: (input, ctx) =>
+      enqueueJob(
+        {
           kind: 'mission-name',
           subjectId: input.subjectId,
           lane: input.lane,
           input: input.input,
         },
-        enqueuedAtSeq: appender.headSeq(),
-        jobId: deps.ids.nextId(),
-        now: deps.now(),
-      });
-      if (!enqueued.ok) return err(enqueued.error);
-      if (!enqueued.value.coalesced) {
-        // Pump kick (single-flight coalesced): drains run one claim per round.
-        scheduler.after(0, () => {
-          void service.pump(ctx).catch(() => undefined);
-        });
-      }
-      return ok(enqueued.value);
-    },
+        ctx,
+      ),
+    enqueueMissionSummary: (input, ctx) =>
+      enqueueJob(
+        {
+          kind: 'mission-summary',
+          subjectId: input.subjectId,
+          lane: input.lane,
+          input: input.input,
+        },
+        ctx,
+      ),
 
     pump: async (ctx) => {
       if (pumping) {

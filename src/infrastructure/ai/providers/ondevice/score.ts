@@ -193,6 +193,9 @@ export const prepareNeedles = (kernel: Kernel, weights: ParsedWeights): void => 
 export interface CalibratedName {
   readonly value: string;
   readonly confidence: number;
+  /** The dual mate's frame id when the name is dual (E8-T04 summaries recap
+   *  anchor terms from exact frames, never re-derived guesses). */
+  readonly dualWith?: string | undefined;
   readonly posteriors: readonly { frameId: string; posterior: number }[];
 }
 
@@ -246,6 +249,7 @@ export const calibrate = (
   return {
     value,
     confidence: stampFor(top.posterior, mate !== undefined),
+    ...(mate !== undefined ? { dualWith: mate.frameId } : {}),
     posteriors: evidence.map((e) => ({ frameId: e.frameId, posterior: e.posterior })),
   };
 };

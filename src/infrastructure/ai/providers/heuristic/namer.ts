@@ -7,12 +7,18 @@
 // neutral heuristic frame — the label is truthful but shallow, and shallow
 // truth never borrows the suggestion affordance. Deterministic: same inputs ⇒
 // same label (chaos/redelivery idempotence).
-import type { AiJobKind, MissionNameInput } from '@/application/ports/ai-jobs.port.js';
+import {
+  MISSION_SUMMARY_NAME_HINT_MAX_CHARS,
+  type AiJobKind,
+  type MissionNameInput,
+  type MissionSummaryInput,
+} from '@/application/ports/ai-jobs.port.js';
 import type { MemoryArtifactCandidate } from '@/domain/memory/index.js';
 
 export type { MissionNameInput };
 import { ok, type LedgeError, type Result } from '@/shared-kernel/result/index.js';
 import type { AiProviderPort } from '../../ladder.js';
+import { buildHeuristicMissionSummary } from './summarizer.js';
 
 /** §6.11 low-band anchor under R7's frozen constants (MED ≥ 0.60): the label is
  *  truthful but shallow — neutral-framed, never suggested, never asserted
@@ -20,42 +26,11 @@ import type { AiProviderPort } from '../../ladder.js';
 export const HEURISTIC_NAMER_CONFIDENCE = 0.55;
 export const HEURISTIC_NAMER_MODEL_CLASS = 'heuristic-domain-time-v1';
 
-const HOURS_PER_HALF_DAY = 12;
-const LEADING = 10;
-
-/** "4:32 pm" — lowercase meridiem, zero-padded minutes (spec example verbatim). */
-export const formatLabelTime = (takenAt: number): string => {
-  const d = new Date(takenAt);
-  const hours24 = d.getHours();
-  const hours =
-    hours24 % HOURS_PER_HALF_DAY === 0 ? HOURS_PER_HALF_DAY : hours24 % HOURS_PER_HALF_DAY;
-  const minutes = d.getMinutes();
-  const meridiem = hours24 < HOURS_PER_HALF_DAY ? 'am' : 'pm';
-  return `${hours}:${minutes < LEADING ? '0' : ''}${minutes} ${meridiem}`;
-};
-
-/** Second-level-ish label set we step over to reach the human word
- *  ("example.co.uk" → "example"). Deliberately tiny — this is a label heuristic,
- *  never a public-suffix engine. */
-const STEP_OVER = new Set(['co', 'com', 'org', 'net', 'ac', 'gov', 'edu']);
-
-const TWO_PART_DOMAIN = 2;
-const SECOND_LEVEL_OFFSET = 2;
-const THIRD_LEVEL_OFFSET = 3;
-const labelWord = (domain: string): string => {
-  const parts = domain
-    .toLowerCase()
-    .split('.')
-    .filter((part) => part.length > 0);
-  if (parts.length === 0) return domain;
-  if (parts.length === 1) return parts[0] ?? domain;
-  const secondLevel =
-    parts.length >= TWO_PART_DOMAIN ? (parts.at(parts.length - SECOND_LEVEL_OFFSET) ?? '') : '';
-  if (STEP_OVER.has(secondLevel) && parts.length > TWO_PART_DOMAIN) {
-    return parts.at(parts.length - THIRD_LEVEL_OFFSET) ?? secondLevel;
-  }
-  return secondLevel.length > 0 ? secondLevel : (parts[0] ?? domain);
-};
+// Label vocabulary lives in labels.ts (E8-T04 extraction — shared by the naming
+// and summary surfaces without an import cycle); re-exported here so the
+// E8-T01 public surface stays byte-stable.
+import { formatLabelTime, labelWord } from './labels.js';
+export { formatLabelTime, labelWord };
 
 const WORD_LIMIT = 2;
 
@@ -67,26 +42,45 @@ export const buildHeuristicMissionName = (input: MissionNameInput): string => {
   return `${input.tabCount} ${plural} · ${domainPart} · ${formatLabelTime(input.takenAt)}`;
 };
 
-/** Rung-1 provider. Never rejects by content: the honest label is always
+/** Rung-1 provider (E8-T04: naming AND the §6.3 shallow-summary form share this
+ *  rung/vocabulary). Never rejects by content: the honest label is always
  *  constructible from ANY input (missing domains → "no domains"; the §6.11 low
  *  tier owns semantic shallowness, not this function). */
 export const createHeuristicNamer = (): AiProviderPort => ({
   providerId: 'heuristic',
   modelClass: HEURISTIC_NAMER_MODEL_CLASS,
-  capabilities: ['mission-name'],
+  capabilities: ['mission-name', 'mission-summary'],
   run: async (job: {
     readonly kind: AiJobKind;
     readonly subjectId: string;
     readonly value: unknown;
   }): Promise<Result<MemoryArtifactCandidate, LedgeError>> => {
-    const raw = (job.value ?? {}) as Partial<MissionNameInput> & Readonly<Record<string, unknown>>;
-    const input: MissionNameInput = {
+    const raw = (job.value ?? {}) as Partial<MissionSummaryInput> &
+      Readonly<Record<string, unknown>>;
+    const input: MissionSummaryInput = {
       tabCount: typeof raw.tabCount === 'number' && raw.tabCount >= 0 ? raw.tabCount : 0,
       rootDomains: Array.isArray(raw.rootDomains)
         ? raw.rootDomains.filter((d): d is string => typeof d === 'string')
         : [],
       takenAt: typeof raw.takenAt === 'number' ? raw.takenAt : 0,
+      ...(Array.isArray(raw.tabs) ? { tabs: raw.tabs as MissionSummaryInput['tabs'] } : {}),
+      ...(typeof raw.missionNameHint === 'string' && raw.missionNameHint.length > 0
+        ? { missionNameHint: raw.missionNameHint.slice(0, MISSION_SUMMARY_NAME_HINT_MAX_CHARS) }
+        : {}),
     };
+    if (job.kind === 'mission-summary') {
+      // E8-T04 fail-down rung (the completion criterion): Spec §6.3's "name +
+      // counts remain", as an artifact — structured evidence, zero prose.
+      const summary = buildHeuristicMissionSummary(input);
+      return ok({
+        value: summary.oneLiner,
+        confidence: HEURISTIC_NAMER_CONFIDENCE,
+        provider: 'heuristic',
+        modelClass: HEURISTIC_NAMER_MODEL_CLASS,
+        schemaV: 1,
+        thread: summary.thread,
+      });
+    }
     return ok({
       value: buildHeuristicMissionName(input),
       confidence: HEURISTIC_NAMER_CONFIDENCE,

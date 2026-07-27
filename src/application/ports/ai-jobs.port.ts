@@ -30,8 +30,10 @@ export type AiLane = (typeof AI_LANES)[number];
 
 /** Job kind vocabulary (ADR-017: new capability = new job type + provider binding).
  *  E8-T01 ships 'mission-name' (Spec §6.1, EES-R 7.1 interactive rename ≤2.5s path);
- *  E8-T04+ extends (summary, topics, links…). */
-export type AiJobKind = 'mission-name';
+ *  E8-T04 adds 'mission-summary' (Spec §6.3 · Blueprint §6.15 — park-time
+ *  one-liner + thread narrative; fail-down law: low-fidelity evidence yields to
+ *  the heuristic counts form, never placeholder prose). */
+export type AiJobKind = 'mission-name' | 'mission-summary';
 
 export type AiJobState = 'queued' | 'claimed' | 'done' | 'failed';
 
@@ -219,6 +221,27 @@ export interface MissionNameInput {
   readonly rootDomains: readonly string[];
   readonly takenAt: number;
   readonly tabs?: readonly MissionNameTab[] | undefined;
+}
+
+// ── E8-T04 · mission summaries (Spec §6.3) ───────────────────────────────────
+/** One-liner surface budget (calm-copy law: a card line, never a paragraph). */
+export const MISSION_SUMMARY_ONE_LINER_MAX_CHARS = 120;
+/** Thread narrative budget (archive surface; the template sentences never
+ *  approach it — the cap is the boundary law, not a target). */
+export const MISSION_SUMMARY_THREAD_MAX_CHARS = 2_000;
+/** Current-best-name hint budget carried into summary jobs. */
+export const MISSION_SUMMARY_NAME_HINT_MAX_CHARS = 120;
+
+/** Worker input for a 'mission-summary' job. `missionNameHint` carries the
+ *  current best name (from a prior naming artifact, when the producing flow
+ *  already has one) — §6.3's "name + counts remain" fail law needs the name
+ *  when it exists. Pure data, same caps as MissionNameInput. */
+export interface MissionSummaryInput {
+  readonly tabCount: number;
+  readonly rootDomains: readonly string[];
+  readonly takenAt: number;
+  readonly tabs?: readonly MissionNameTab[] | undefined;
+  readonly missionNameHint?: string | undefined;
 }
 
 /** Result of one job attempt at a host (pre-validation — the §2.12 post-validation

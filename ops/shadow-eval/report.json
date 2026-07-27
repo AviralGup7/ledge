@@ -6,6 +6,7 @@
   "nameable": 532,
   "yieldRows": 19,
   "namedByOnDevice": 532,
+  "summariesByOnDevice": 532,
   "ondeviceAcc": 1,
   "heuristicAcc": 0.046992481203007516,
   "metrics": {
@@ -17,7 +18,9 @@
     "stampVocabularyPass": true,
     "determinismPass": true,
     "totalityPass": true,
-    "machineAgreementPass": true
+    "machineAgreementPass": true,
+    "failDownTotalityPass": true,
+    "oneLinerDisciplinePass": true
   },
   "deadTerms": [],
   "gates": [
@@ -99,6 +102,24 @@
       "value": 0,
       "law": {
         "metric": "wasm machine == JS law (term verdicts)",
+        "threshold": 1
+      }
+    },
+    {
+      "id": "G10-fail-down-totality",
+      "pass": true,
+      "value": 551,
+      "law": {
+        "metric": "rows with SOME lawful summary (ondevice or heuristic)",
+        "threshold": 1
+      }
+    },
+    {
+      "id": "G11-one-liner-discipline",
+      "pass": true,
+      "value": true,
+      "law": {
+        "metric": "one-liners ≤ 120 chars ∧ no urgency punctuation",
         "threshold": 1
       }
     }

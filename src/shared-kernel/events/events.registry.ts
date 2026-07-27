@@ -223,6 +223,9 @@ export const EVENT_REGISTRY = {
       modelClass: 'string',
       schemaV: 'number',
       derivedFromSeqRange: 'record',
+      // E8-T04 additive (A-09 note: docs/adr-notes/e8-summaries-v1.md) — Spec
+      // §6.3 thread narrative rides the same artifact; one-liner stays `value`.
+      'thread?': 'string',
     },
   },
   MemoryArtifactInvalidated: {
