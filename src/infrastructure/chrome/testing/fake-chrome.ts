@@ -9,6 +9,8 @@ import {
   CHROME_GROUP_ID_NONE,
   CHROME_WINDOW_ID_NONE,
   type ChromeEventSubscription,
+  type ChromeOffscreenApi,
+  type ChromeOffscreenCreateParameters,
   type ChromeSessionLike,
   type ChromeSessionsApi,
   type ChromeStorageApi,
@@ -86,6 +88,8 @@ export interface FakeChrome {
   readonly storage: ChromeStorageApi;
   /** E3-T03 · chrome.sessions seam (read-only: getRecentlyClosed over a seeded backlog). */
   readonly sessions: ChromeSessionsApi;
+  /** E3-T07 · chrome.offscreen seam (document lifecycle over an in-memory presence flag). */
+  readonly offscreen: ChromeOffscreenApi;
   readonly hooks: {
     /** Drive an onUpdated turn (changeInfo echoed verbatim, chrome-style). */
     readonly updateTab: (tabId: number, changeInfo: ChromeTabChangeInfo) => void;
@@ -98,6 +102,19 @@ export interface FakeChrome {
     readonly sabotageSessionsNext: (cause: unknown) => void;
     /** E3-T03 · replace the recently-closed backlog (most-recent first). */
     readonly seedRecentlyClosed: (sessions: readonly ChromeSessionLike[]) => void;
+    /** E3-T07 · one-shot sabotage scoped to the NEXT offscreen call. */
+    readonly sabotageOffscreenNext: (cause: unknown) => void;
+    /** E3-T07 · one-shot sabotage scoped to the NEXT createDocument call (race windows). */
+    readonly sabotageOffscreenCreateNext: (cause: unknown) => void;
+    /** E3-T07 · one-shot sabotage scoped to the NEXT closeDocument call (kill races). */
+    readonly sabotageOffscreenCloseNext: (cause: unknown) => void;
+    /** E3-T07 · browser kill simulation: presence flips absent with no close call. */
+    readonly killDocument: () => void;
+    /** E3-T07 · assertion seam: presence flag + last create parameters. */
+    readonly offscreenState: () => {
+      readonly present: boolean;
+      readonly lastCreate: ChromeOffscreenCreateParameters | undefined;
+    };
     /**
      * E2-T07 · browser-restart simulation (ADR-007 §4): session storage dies,
      * local persists. SW recycling is simulated by simply NOT calling this.
@@ -160,6 +177,11 @@ export function createFakeChrome(opts: FakeChromeOptions = {}): FakeChrome {
   let storageSabotage: unknown;
   let sessionsSabotage: unknown;
   let sessionBacklog: readonly ChromeSessionLike[] = [];
+  let offscreenSabotage: unknown;
+  let offscreenCreateSabotage: unknown;
+  let offscreenCloseSabotage: unknown;
+  let offscreenPresent = false;
+  let offscreenLastCreate: ChromeOffscreenCreateParameters | undefined;
 
   const consumeStorageSabotage = (): unknown => {
     const s = storageSabotage;
@@ -411,6 +433,56 @@ export function createFakeChrome(opts: FakeChromeOptions = {}): FakeChrome {
     onFocusChanged: bus.windowFocusChanged.api,
   };
 
+  // E3-T07 · offscreen seam: single-document law (a second create while present
+  // rejects chrome-style), lastError-shaped promise rejections, kill hook for
+  // the E8 lease/kill ladder tests.
+  const consumeOffscreenSabotage = (): unknown => {
+    const s = offscreenSabotage;
+    offscreenSabotage = undefined;
+    return s;
+  };
+  const offscreenApi: ChromeOffscreenApi = {
+    hasDocument: () => {
+      const s = consumeOffscreenSabotage();
+      if (s !== undefined) return Promise.reject(s);
+      return Promise.resolve(offscreenPresent);
+    },
+    createDocument: (parameters) => {
+      const s = consumeOffscreenSabotage();
+      if (s !== undefined) return Promise.reject(s);
+      if (offscreenCreateSabotage !== undefined) {
+        const c = offscreenCreateSabotage;
+        offscreenCreateSabotage = undefined;
+        // Chrome truth: the single-document rejection means a document EXISTS (a
+        // sibling won the race); subsequent presence reads must observe it.
+        if (c instanceof Error && c.message.includes('Only a single offscreen document'))
+          offscreenPresent = true;
+        return Promise.reject(c);
+      }
+      if (offscreenPresent)
+        return Promise.reject(new Error('Only a single offscreen document may be created.'));
+      offscreenPresent = true;
+      offscreenLastCreate = { ...parameters };
+      return Promise.resolve();
+    },
+    closeDocument: () => {
+      const s = consumeOffscreenSabotage();
+      if (s !== undefined) return Promise.reject(s);
+      if (offscreenCloseSabotage !== undefined) {
+        const c = offscreenCloseSabotage;
+        offscreenCloseSabotage = undefined;
+        // Chrome truth: a close-of-absent rejection means the document is already
+        // GONE (a kill won the race); subsequent presence reads must observe it.
+        if (c instanceof Error && c.message.includes('No current offscreen document'))
+          offscreenPresent = false;
+        return Promise.reject(c);
+      }
+      if (!offscreenPresent) return Promise.reject(new Error('No current offscreen document.'));
+      offscreenPresent = false;
+      return Promise.resolve();
+    },
+  };
+
   // E3-T03 · read-only sessions seam: maxResults honored (platform cap law is
   // the adapter's, the backlog slice mirrors chrome's filter semantics).
   const sessionsApi: ChromeSessionsApi = {
@@ -430,6 +502,7 @@ export function createFakeChrome(opts: FakeChromeOptions = {}): FakeChrome {
     windows: windowsApi,
     storage: storageApi,
     sessions: sessionsApi,
+    offscreen: offscreenApi,
     hooks: {
       updateTab: (tabId, changeInfo) => {
         const t = tabs.get(tabId);
@@ -459,6 +532,22 @@ export function createFakeChrome(opts: FakeChromeOptions = {}): FakeChrome {
       seedRecentlyClosed: (sessions) => {
         sessionBacklog = [...sessions];
       },
+      sabotageOffscreenNext: (cause) => {
+        offscreenSabotage = cause;
+      },
+      sabotageOffscreenCreateNext: (cause) => {
+        offscreenCreateSabotage = cause;
+      },
+      sabotageOffscreenCloseNext: (cause) => {
+        offscreenCloseSabotage = cause;
+      },
+      killDocument: () => {
+        offscreenPresent = false;
+      },
+      offscreenState: () => ({
+        present: offscreenPresent,
+        lastCreate: offscreenLastCreate === undefined ? undefined : { ...offscreenLastCreate },
+      }),
       clearSessionArea: () => {
         sessionData = new Map();
       },

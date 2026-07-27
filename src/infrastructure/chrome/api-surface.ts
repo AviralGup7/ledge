@@ -150,3 +150,24 @@ export interface ChromeSessionsApi {
     readonly maxResults?: number | undefined;
   }) => Promise<ChromeSessionLike[]>;
 }
+
+// ─── E3-T07 · offscreen (workroom document lifecycle) ────────────────────────
+
+/**
+ * chrome.offscreen as Ledge drives it (E3-T07 roadmap row "OffscreenPort +
+ * workroom skeleton"). The structural mirror pins ONLY the lifecycle quartet;
+ * job payloads never cross this seam (they ride §3.6 runtime messages). Chrome
+ * versions differ in promise-vs-callback shape on hasDocument — the adapter
+ * normalizes at the boundary like every other api-surface promise here.
+ */
+export interface ChromeOffscreenCreateParameters {
+  readonly url: string;
+  readonly reasons: readonly string[];
+  readonly justification: string;
+}
+
+export interface ChromeOffscreenApi {
+  readonly hasDocument: () => Promise<boolean>;
+  readonly createDocument: (parameters: ChromeOffscreenCreateParameters) => Promise<void>;
+  readonly closeDocument: () => Promise<void>;
+}

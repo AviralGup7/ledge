@@ -10,6 +10,8 @@ export { createChromeStorageAreaAdapter } from './storage-area.adapter.js';
 export type { StorageAreaAdapterDeps } from './storage-area.adapter.js';
 export { createChromeSessionsAdapter, RECENTLY_CLOSED_CAP } from './sessions.adapter.js';
 export type { SessionsAdapterDeps } from './sessions.adapter.js';
+export { createChromeOffscreenAdapter, OFFSCREEN_REASON_TABLE } from './offscreen.adapter.js';
+export type { OffscreenAdapterDeps } from './offscreen.adapter.js';
 export type {
   ChromeTabLike,
   ChromeTabChangeInfo,
@@ -22,4 +24,6 @@ export type {
   ChromeSessionTabLike,
   ChromeSessionWindowLike,
   ChromeSessionsApi,
+  ChromeOffscreenApi,
+  ChromeOffscreenCreateParameters,
 } from './api-surface.js';
