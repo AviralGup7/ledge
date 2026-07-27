@@ -1,0 +1,47 @@
+name: 'Beta-channel soak (E7-T06 · roadmap row: beta job red ⇒ named owner within 48h)'
+on:
+  # Weekly Monday 06:00 UTC — Chrome beta ships roughly weekly; a daily soak
+  # would spend its life downloading browsers. Manual soak: workflow_dispatch.
+  schedule: [{ cron: '0 6 * * 1' }]
+  workflow_dispatch:
+
+jobs:
+  beta-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version-file: .nvmrc, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+
+      - name: Install Chrome beta (pinned @puppeteer/browsers — the house bin, zero new supply chain)
+        id: beta
+        run: |
+          LINE=$(pnpm exec browsers install chrome@beta --path .chrome-beta | tail -1)
+          echo "installed: $LINE"
+          BETA_PATH=$(printf '%s' "$LINE" | awk '{print $NF}')
+          echo "path=$BETA_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Beta soak — e2e lane against Chrome beta (declared long-running; never in PR lanes)
+        env:
+          LEDGE_CHROME: ${{ steps.beta.outputs.path }}
+        run: pnpm test:e2e
+
+      - name: 48h owner rule — file the red against the named owner (AviralGup7)
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --title "Beta soak red — $(date -u +%Y-%m-%d)" \
+            --assignee AviralGup7 \
+            --body "E7-T06 lane \`beta-soak\` failed on run ${{ github.run_id }} (${{ github.sha }}).
+          Rule of the row: the named owner (AviralGup7) investigates within 48h of the red.
+
+          - Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          - Matrix for the monthly human pass: docs/beta-soak-matrix.md
+
+          First moves: rerun \`workflow_dispatch\`; if still red, bisect vs. last green run and check
+          whether the drift is ours or beta-channel (see docs/runbooks/chrome-adapters.md)."
