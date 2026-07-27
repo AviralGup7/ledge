@@ -27,6 +27,8 @@ jobs:
         run: pnpm check:errors
       - name: Dependency policy D-01 (<=5 runtime deps, quarantine)
         run: pnpm check:dep-policy
+      - name: ADR-041 isolation + R7/R18 confidence gates (E8-T02)
+        run: pnpm check:isolation
       - name: Typecheck
         run: pnpm typecheck
   test:

@@ -21,9 +21,11 @@ describe('§6.11 confidence tier law', () => {
     expect(confidenceTier(0)).toBe('low');
   });
 
-  it('heuristic rung-1 confidence (0.55) surfaces as a suggestion (§6.1 affordance)', () => {
-    expect(confidenceTier(0.55)).toBe('medium');
-    expect(confidencePresentation(0.55)).toBe('suggested');
+  it('heuristic rung-1 confidence (0.55) lands LOW under R7 — the neutral frame (§5.13 honesty)', () => {
+    // R7 contract constants (MED ≥ 0.60): the honest label is truthful but
+    // shallow — it never borrows the suggestion affordance.
+    expect(confidenceTier(0.55)).toBe('low');
+    expect(confidencePresentation(0.55)).toBe('neutral');
   });
 
   it('non-finite confidence is the low tier (never a NaN guess)', () => {

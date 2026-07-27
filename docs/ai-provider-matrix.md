@@ -18,8 +18,9 @@ cloud depth-mode is opt-in with per-day budgets and the redaction gateway.
 
 - `BREAKER_OPEN_AT_FAILURES = 3`, `BREAKER_COOLDOWN_MS = 60_000`, half-open probe
   after cooldown (`src/infrastructure/ai/ladder.ts`).
-- `HEURISTIC_NAMER_CONFIDENCE = 0.55` — §6.11 medium band → "suggested"
-  affordance, never asserted (ADR-note F3 in `adr-notes/e8-ai-queue.md`).
+- `HEURISTIC_NAMER_CONFIDENCE = 0.55` — §6.11 LOW band under R7's frozen
+  constants (MED ≥ 0.60) → the neutral heuristic frame; shallow truth never
+  borrows the suggestion affordance (ADR-note F3).
 - Lane deadlines: interactive 2.5s (EES §7.1 budget) · maintenance 30s ·
   background 2min (`AI_LANE_DEADLINE_MS`); lanes admit
   interactive > maintenance > background; background closed until a caller-proven
@@ -37,7 +38,8 @@ law-breaking values ⇒ `artifact-invalid`. Both classes are terminal for the jo
 
 ## Tier mapping (§6.11, verbatim)
 
-high (≥ 0.8) = present normally · medium (≥ 0.5) = "suggested" affordance ·
-low = neutral heuristic frame. Boundaries belong to the higher tier; non-finite
-confidence collapses to low. Surfaces bind affordances to tiers, never to
-numbers.
+high (≥ 0.85) = present normally · medium (0.60–0.85) = "suggested" affordance ·
+low (< 0.60) = neutral heuristic frame — R7's contract constants, verbatim.
+Boundaries belong to the higher tier; non-finite confidence collapses to low.
+Surfaces bind affordances to tiers, never to numbers (R18; ownership is the
+Memory layer alone, pinned by `scripts/isolation-lint.mjs` since E8-T02).

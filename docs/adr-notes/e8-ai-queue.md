@@ -70,14 +70,18 @@ the Spec §6.1 honest label — "N tabs · domain-words · h:mm am/pm" —
 deterministically (same input ⇒ same label; coalescing/redelivery-safe) and
 stamps `confidence 0.55`, `modelClass 'heuristic-domain-time-v1'`, `schemaV 1`.
 
-**Why 0.55.** §6.11's scale is a product constant; E8-T01 must choose where the
-honest label sits. 0.55 lands the artifact in the medium band (≥ 0.5) — rendered
-"present with 'suggested' affordance" — because the label is truthful but
-shallow; high would assert what it cannot defend, low (< 0.5) would hide a
-useful rename affordance behind the neutral frame. The cutoffs
-(`CONFIDENCE_TIER_HIGH_AT 0.8`, `MEDIUM_AT 0.5`, boundaries to the higher tier,
-non-finite to low) ship as named constants in `domain/memory/confidence.ts`;
-tighten-only per ADR law. The ladder identifies the heuristic rung by the
+**Why 0.55.** §6.11's scale is a product constant; R7 (EES risk register) froze
+the cutoffs at HIGH ≥ 0.85 · MED 0.60–0.85 · LOW < 0.60 — E8-T01 initially
+shipped provisional 0.80/0.50 cutoffs and E8-T02 aligned to R7 verbatim (that
+alignment, and its consequence, is recorded here as law). Under R7, 0.55 is the
+LOW band ⇒ §6.11 renders the neutral heuristic frame. That is the honest
+reading: the label is truthful but shallow — it never earns the suggestion
+affordance, and raising the stamp to buy one would be exactly the §5.13 sin
+("a guess wearing a lab coat"). The cutoffs (`CONFIDENCE_TIER_HIGH_AT 0.85`,
+`MEDIUM_AT 0.60`, boundaries to the higher tier, non-finite to low) ship as
+named constants in `domain/memory/confidence.ts`, changed only via ADR note
+after Tier-3 freeze (R7's own law); the E8-T02 isolation lint pins the values
+mechanically. The ladder identifies the heuristic rung by the
 `heuristic-` modelClass prefix, never by provider id — breakers can never
 quarantine it (Principle 29: the last rung cannot burn).
 

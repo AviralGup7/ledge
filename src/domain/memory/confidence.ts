@@ -15,13 +15,13 @@ export type ConfidenceTier = 'high' | 'medium' | 'low';
  *  guess wearing a lab coat). */
 export type ConfidencePresentation = 'normal' | 'suggested' | 'neutral';
 
-/** Tier cutoffs on the stored 0..1 confidence. Chosen policy (E8-T01 ADR note):
- *  the medium band is intentionally wide — heuristic rung-1 artifacts (0.55)
- *  surface as suggestions, which is §6.1's rename affordance; truly hollow output
- *  (< 0.5) collapses to the neutral heuristic frame instead of being presented
- *  as a guess. tighten-only per ADR law. */
-export const CONFIDENCE_TIER_HIGH_AT = 0.8;
-export const CONFIDENCE_TIER_MEDIUM_AT = 0.5;
+/** R7 CONTRACT CONSTANTS (EES risk register, frozen): HIGH ≥ 0.85 ·
+ *  MED 0.60–0.85 · LOW < 0.60. Tunable via flag until Tier-3 freeze; any change
+ *  after is a docs-visible event requiring an ADR note. The honest rung-1 label
+ *  stamps 0.55 ⇒ LOW ⇒ the neutral heuristic frame — §5.13 law: shallow truth
+ *  never borrows the suggestion affordance (E8-T02 adopted R7 verbatim). */
+export const CONFIDENCE_TIER_HIGH_AT = 0.85;
+export const CONFIDENCE_TIER_MEDIUM_AT = 0.6;
 
 /** Inclusive numeric band check (boundary belongs to the HIGHER tier). */
 export const confidenceTier = (confidence: number): ConfidenceTier => {

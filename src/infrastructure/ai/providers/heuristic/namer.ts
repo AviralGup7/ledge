@@ -2,9 +2,11 @@
 // (EES §2.12 invariant: "heuristic ladder rung always exists"; Principle 29: AI
 // fully OFF ⇒ product coherent). Spec §6.1 failure law made constructive here:
 // the rung emits the HONEST LABEL form — "N tabs · domain-words · time" — never
-// a guess wearing a lab coat (§5.13), and it stamps confidence 0.55 so §6.11
-// renders it as a suggestion (the rename affordance), never as a name it can't
-// defend. Deterministic: same inputs ⇒ same label (chaos/redelivery idempotence).
+// a guess wearing a lab coat (§5.13). It stamps confidence 0.55: under R7's
+// contract constants (MED ≥ 0.60) that is the LOW band ⇒ §6.11 renders the
+// neutral heuristic frame — the label is truthful but shallow, and shallow
+// truth never borrows the suggestion affordance. Deterministic: same inputs ⇒
+// same label (chaos/redelivery idempotence).
 import type { AiJobKind, MissionNameInput } from '@/application/ports/ai-jobs.port.js';
 import type { MemoryArtifactCandidate } from '@/domain/memory/index.js';
 
@@ -12,8 +14,9 @@ export type { MissionNameInput };
 import { ok, type LedgeError, type Result } from '@/shared-kernel/result/index.js';
 import type { AiProviderPort } from '../../ladder.js';
 
-/** §6.11 medium-band anchor: the label is truthful but shallow — suggested, never
- *  asserted (E8-T01 ADR note F3 records the constant). */
+/** §6.11 low-band anchor under R7's frozen constants (MED ≥ 0.60): the label is
+ *  truthful but shallow — neutral-framed, never suggested, never asserted
+ *  (E8-T01 F3 recorded the stamp; E8-T02 aligned the tiers to R7). */
 export const HEURISTIC_NAMER_CONFIDENCE = 0.55;
 export const HEURISTIC_NAMER_MODEL_CLASS = 'heuristic-domain-time-v1';
 

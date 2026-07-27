@@ -181,8 +181,9 @@ describe('E8-T01 · §6.11 confidence-tier law (properties)', () => {
       fc.property(fc.double({ noNaN: true }), (c) => {
         const p = confidencePresentation(c);
         expect(p === 'normal' || p === 'suggested' || p === 'neutral').toBe(true);
-        // The ladder anchor: rung-1's 0.55 always lands the suggestion affordance.
-        expect(confidencePresentation(HEURISTIC_NAMER_CONFIDENCE)).toBe('suggested');
+        // The R7 anchor: rung-1's honest 0.55 stamps LOW ⇒ the neutral frame —
+        // shallow truth never borrows the suggestion affordance (§5.13).
+        expect(confidencePresentation(HEURISTIC_NAMER_CONFIDENCE)).toBe('neutral');
       }),
     );
   });

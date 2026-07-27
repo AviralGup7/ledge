@@ -30,7 +30,8 @@ to be enriched, not replaced.
 
 - `src/infrastructure/ai/` — queue lanes + leases (`job-queue.ts`), breaker
   ladder (`ladder.ts`), worker hosts (`worker-hosts.ts`); rung 1 in
-  `providers/heuristic/namer.ts` (confidence 0.55 stamped, suggested band).
+  `providers/heuristic/namer.ts` (confidence 0.55 stamped ⇒ R7 LOW band ⇒
+  neutral frame — §5.13 honesty law).
 - `src/application/usecases/ai-jobs.ts` — the exactly-once hinged commit owner.
 - `ops/tests/unit/infrastructure/ai-queue.test.ts` (16) ·
   `ops/tests/unit/infrastructure/ai-jobs-service.test.ts` (13) ·
