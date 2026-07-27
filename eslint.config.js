@@ -140,7 +140,16 @@ export default tseslint.config(
   },
   {
     // Permissive zones: tests + tooling may use literals, console, ambient globals freely.
-    files: ['ops/tests/**', '**/*.test.ts', '**/*.spec.ts', 'scripts/**', 'tools/**'],
+    files: [
+      'ops/tests/**',
+      '**/*.test.ts',
+      '**/*.spec.ts',
+      'scripts/**',
+      'tools/**',
+      // E8-T03: shadow-corpus generator + shadow-eval gate are node tooling (same class as scripts/**).
+      'ops/shadow-corpus/**',
+      'ops/shadow-eval/**',
+    ],
     rules: {
       'no-magic-numbers': 'off',
       'no-console': 'off',

@@ -7,12 +7,12 @@ provision, not a promise. ADR-018's laws apply to every row: provider failure �
 circuit-break + next rung; malformed output ⇒ reject + count, never shipped;
 cloud depth-mode is opt-in with per-day budgets and the redaction gateway.
 
-| rung | provider id  | class                      | availability           | breaker            | status (E8-T01)                           | witness                                         |
-| ---- | ------------ | -------------------------- | ---------------------- | ------------------ | ----------------------------------------- | ----------------------------------------------- |
-| 3    | `clouddepth` | cloud depth-mode           | opt-in, budgeted/day   | opens at 3 strikes | **provision** — dir is a `.gitkeep` shell | E8 milestone rows (T03+)                        |
-| 2    | `builtin`    | Chrome built-in AI         | capability-detected    | opens at 3 strikes | **provision** — dir is a `.gitkeep` shell | E8-T06 (absence = invisible degrade)            |
-| 2    | `ondevice`   | WASM model in the workroom | capability-detected    | opens at 3 strikes | **provision** — dir is a `.gitkeep` shell | E8-T03 (shadow-eval must beat heuristic)        |
-| 1    | `heuristic`  | `heuristic-domain-time-v1` | always (offline, free) | **never breaks**   | **shipped**                               | unit/property/chaos suites + S5 forced-rung law |
+| rung | provider id  | class                                        | availability                                          | breaker                                  | status                                    | witness                                                                                    |
+| ---- | ------------ | -------------------------------------------- | ----------------------------------------------------- | ---------------------------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------ |
+| 3    | `clouddepth` | cloud depth-mode                             | opt-in, budgeted/day                                  | opens at 3 strikes                       | **provision** — dir is a `.gitkeep` shell | E8 milestone rows (T04+)                                                                   |
+| 2    | `builtin`    | Chrome built-in AI                           | capability-detected                                   | opens at 3 strikes                       | **provision** — dir is a `.gitkeep` shell | E8-T06 (absence = invisible degrade)                                                       |
+| 2    | `ondevice`   | `ondevice-fwd-v1` WASM model in the workroom | capability-detected (deferred rung, yield-on-absence) | opens at 3 strikes — yields never strike | **shipped** (E8-T03)                      | M1–M4/N1–N5/L1 suites · `check:ondevice-model` · `check:shadow-eval` (margin 0.953 ≥ 0.50) |
+| 1    | `heuristic`  | `heuristic-domain-time-v1`                   | always (offline, free)                                | **never breaks**                         | **shipped**                               | unit/property/chaos suites + S5 forced-rung law                                            |
 
 ## Constants (versioned with the matrix)
 
@@ -27,6 +27,10 @@ cloud depth-mode is opt-in with per-day budgets and the redaction gateway.
   idle+battery window exists (ADR-note F4).
 - Job attempt accounting: `JOB_RETRY_CLAIMS = 3`, claim #4 runs
   `forceHeuristic`, failure there is `attempts-exhausted` — terminal, counted.
+- On-device calibration (E8-T03, ADR-note H3): accept floor `0.60`, dual
+  margin `0.12`, sharp bar `0.90`, mission-grade logit `≥ 1.0` (chaff register
+  may name its whole story, never half a dual); stamps
+  `{0.88, 0.85, 0.72, 0.64}` — vocabulary pinned by shadow-eval G6.
 
 ## Reject + count (Spec §6.1 / EES §2.12)
 

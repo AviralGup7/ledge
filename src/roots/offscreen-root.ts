@@ -14,6 +14,7 @@ import { platformIds, type IdGenerator } from '@/shared-kernel/identity/index.js
 import type { AiPayloadRef } from '@/application/ports/ai-jobs.port.js';
 import type { MemoryArtifactCandidate } from '@/domain/memory/index.js';
 import { createAiLadder, createHeuristicNamer } from '@/infrastructure/ai/index.js';
+import { createOnDeviceNamer } from '@/infrastructure/ai/providers/ondevice/index.js';
 import type { LedgeError, Result } from '@/shared-kernel/result/index.js';
 
 const WORKROOM_CONTEXT = 'offscreen' as const;
@@ -39,10 +40,13 @@ export interface WorkroomJobExecutor {
   }) => Promise<WorkroomJobOutcome>;
 }
 
-/** Default executor: the heuristic ladder, in-workroom. provider-error results
- *  keep their producer's failure class on the wire (SW classifies + counts). */
-const createHeuristicExecutor = (): WorkroomJobExecutor => {
-  const ladder = createAiLadder({ providers: [createHeuristicNamer()] });
+/** Default workroom ladder (E8-T03): on-device rung registers when the model
+ *  verifies, heuristic stands last. Yields fall to the next rung; failure
+ *  classes ride the wire for SW classification. */
+const createWorkroomExecutor = async (): Promise<WorkroomJobExecutor> => {
+  const ondevice = await createOnDeviceNamer();
+  const providers = [...(ondevice !== null ? [ondevice] : []), createHeuristicNamer()];
+  const ladder = createAiLadder({ providers });
   return {
     execute: async (job) => {
       const rungs = ladder.resolve({
@@ -60,6 +64,20 @@ const createHeuristicExecutor = (): WorkroomJobExecutor => {
       }
       return { failureClass: 'provider-error' };
     },
+  };
+};
+
+/** Sync composition with async capability detection: the executor resolves the
+ *  verified ladder lazily and single-flight (graph composition stays sync per
+ *  E1 root law; the ~1ms model verify rides the first offer). */
+const createDefaultWorkroomExecutor = (): WorkroomJobExecutor => {
+  let pending: Promise<WorkroomJobExecutor> | null = null;
+  const ready = (): Promise<WorkroomJobExecutor> => {
+    pending ??= createWorkroomExecutor();
+    return pending;
+  };
+  return {
+    execute: (job) => ready().then((executor) => executor.execute(job)),
   };
 };
 
@@ -108,7 +126,7 @@ export function composeWorkroomGraph(deps: WorkroomGraphDeps = {}): WorkroomGrap
   const transport = deps.transport ?? { send: () => undefined };
   const ids = deps.ids ?? platformIds;
   const contractHash = deps.contractHash ?? computeContractHash();
-  const executor = deps.executor ?? createHeuristicExecutor();
+  const executor = deps.executor ?? createDefaultWorkroomExecutor();
 
   const emit = (name: string, payload: Record<string, unknown>): void => {
     transport.send({

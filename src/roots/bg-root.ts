@@ -60,11 +60,13 @@ import {
 import {
   createAiJobQueue,
   createAiLadder,
+  createDeferredOnDeviceNamer,
   createHeuristicNamer,
   createSwLocalWorkerHost,
   createWorkroomHostPair,
   WORKROOM_EVENT_NAMES,
 } from '@/infrastructure/ai/index.js';
+import type { AiProviderPort } from '@/infrastructure/ai/ladder.js';
 import { createIntentLedger } from '@/infrastructure/intents/ledger.js';
 import { createJournal } from '@/infrastructure/journal/index.js';
 import { createV1ProjectionEngine } from '@/infrastructure/projections/index.js';
@@ -215,6 +217,10 @@ export interface BackgroundRuntimeDeps {
     | undefined;
   /** E8-T01 workroom-lane kill switch for composed hosts (undefined = live). */
   readonly aiDisabled?: boolean | undefined;
+  /** E8-T03 on-device rung seam (default: the deferred capability-detected
+   *  provider — tests negate capability through its host, or substitute the
+   *  whole rung for determinism). */
+  readonly onDeviceNamer?: AiProviderPort | undefined;
   /** §3.6 transport seam (default: the guarded full-envelope runtime send). */
   readonly workroomSend?: ((message: MessageEnvelope) => void) | undefined;
 }
@@ -504,10 +510,14 @@ const buildRuntime = (
 
   // E8-T01 · the AI pipeline graph (EES §2.12): durable queue over the storage
   // engine (Blueprint §2.10 "storage (jobs)" dependency — writer-family scope:
-  // ai_jobs rows only, ADR-noted), rung-1 heuristic ladder + breaker evidence,
-  // SW-local host always, workroom §3.6 pair when the offscreen port answers.
+  // ai_jobs rows only, ADR-noted), breaker ladder + evidence, SW-local host
+  // always, workroom §3.6 pair when the offscreen port answers.
+  // E8-T03: rung 2 ondevice registers as the DEFERRED provider — model verify
+  // is async, composition is sync; capability absence yields typed+invisible.
   const aiQueue = createAiJobQueue({ engine: storage });
-  const aiLadder = createAiLadder({ providers: [createHeuristicNamer()] });
+  const aiLadder = createAiLadder({
+    providers: [deps.onDeviceNamer ?? createDeferredOnDeviceNamer(), createHeuristicNamer()],
+  });
   const aiSwLocal = createSwLocalWorkerHost({ ladder: aiLadder });
   const offscreenPort = deps.offscreen ?? createChromeOffscreenAdapter();
   const aiWorkroom =

@@ -1,0 +1,107 @@
+{
+  "metricSet": "ai-shadow-eval-v1",
+  "corpusHash": "e07e00c660e6b3e263e985599e1651642bb8d092b729e1e579f5bde6767eeb12",
+  "kernelHash": "ce0b5d0ffcc040c6e3646fd82510ce2877e5193c5b8ffd4589fafac8de3db94e",
+  "rows": 551,
+  "nameable": 532,
+  "yieldRows": 19,
+  "namedByOnDevice": 532,
+  "ondeviceAcc": 1,
+  "heuristicAcc": 0.046992481203007516,
+  "metrics": {
+    "fabrications": 0,
+    "precision": 1,
+    "recall": 1,
+    "termReachability": 1,
+    "beatsHeuristicMargin": 0.9530075187969925,
+    "stampVocabularyPass": true,
+    "determinismPass": true,
+    "totalityPass": true,
+    "machineAgreementPass": true
+  },
+  "deadTerms": [],
+  "gates": [
+    {
+      "id": "G1-fabrication-zero",
+      "pass": true,
+      "value": 0,
+      "law": {
+        "metric": "named on expect-yield rows",
+        "threshold": 0
+      }
+    },
+    {
+      "id": "G2-precision",
+      "pass": true,
+      "value": 1,
+      "law": {
+        "metric": "top frame ∈ accepted / named",
+        "threshold": 0.95
+      }
+    },
+    {
+      "id": "G3-recall",
+      "pass": true,
+      "value": 1,
+      "law": {
+        "metric": "named / nameable",
+        "threshold": 0.85
+      }
+    },
+    {
+      "id": "G4-term-reachability",
+      "pass": true,
+      "value": 1,
+      "law": {
+        "metric": "lexicon terms fired ≥1 row",
+        "threshold": 1
+      }
+    },
+    {
+      "id": "G5-beats-heuristic",
+      "pass": true,
+      "value": 0.9530075187969925,
+      "law": {
+        "metric": "ondevice acc − heuristic acc (nameable)",
+        "threshold": 0.5
+      }
+    },
+    {
+      "id": "G6-stamp-vocabulary",
+      "pass": true,
+      "value": true,
+      "law": {
+        "metric": "confidences ⊆ frozen stamp set",
+        "threshold": 1
+      }
+    },
+    {
+      "id": "G7-determinism",
+      "pass": true,
+      "value": true,
+      "law": {
+        "metric": "two full passes, byte-equal digest",
+        "threshold": 1
+      }
+    },
+    {
+      "id": "G8-totality",
+      "pass": true,
+      "value": 551,
+      "law": {
+        "metric": "rows judged == rows in corpus",
+        "threshold": 1
+      }
+    },
+    {
+      "id": "G9-machine-agreement",
+      "pass": true,
+      "value": 0,
+      "law": {
+        "metric": "wasm machine == JS law (term verdicts)",
+        "threshold": 1
+      }
+    }
+  ],
+  "verdict": "pass"
+}

@@ -194,12 +194,31 @@ export interface AiJobQueuePort {
 
 // ─── Worker-host seam (application ↔ infrastructure/ai host implementations) ──
 
+/** One tab's naming evidence (E8-T03): what the on-device scorer actually
+ *  reads. Titles are CAPPED at enqueue (producer law) — the queue row stores
+ *  the input inline and §3.1's slim-payload doctrine holds for durable rows
+ *  too. `rootDomain` duplicates the URL's registrable word (normalized by the
+ *  producer); `discarded` tabs carry title only (never URL-derived identity —
+ *  parked-tab privacy). */
+export interface MissionNameTab {
+  readonly title: string;
+  readonly rootDomain: string;
+  readonly discarded?: boolean | undefined;
+}
+
+/** Caps for MissionNameInput.tabs (producer-enforced; providers trust the
+ *  envelope but stay total over violations — honesty law never inverts). */
+export const MISSION_NAME_MAX_TABS = 50;
+export const MISSION_NAME_TITLE_MAX_CHARS = 200;
+
 /** Worker input for a 'mission-name' job (payloadRef.input vocabulary, versioned
- *  with the kind). Pure data; the producing flow owns assembly. */
+ *  with the kind). Pure data; the producing flow owns assembly. `tabs` is
+ *  additive (E8-T03): absent ⇒ rung-1 answers from domains alone. */
 export interface MissionNameInput {
   readonly tabCount: number;
   readonly rootDomains: readonly string[];
   readonly takenAt: number;
+  readonly tabs?: readonly MissionNameTab[] | undefined;
 }
 
 /** Result of one job attempt at a host (pre-validation — the §2.12 post-validation

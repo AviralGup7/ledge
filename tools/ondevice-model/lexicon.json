@@ -1,0 +1,158 @@
+{
+  "comment": "E8-T03 forward-pass v1 lexicon — English-only stems, register-marked (mission-worthy vs chaff). Human-curated; derived artifacts regenerate via tools/ondevice-model/build-model.mjs (pnpm gen:ondevice-model; check:ondevice-model proves byte-derivation). Stemming law: substring-with-boundary, never inside another alphabetic run — full-word terms only — 'retro' never eats 'retrospective', and a term must equal its own normalization (check:ondevice-model enforces the liveness law).",
+  "frames": [
+    {
+      "id": "github",
+      "display": "GitHub",
+      "logit": 1.6,
+      "terms": ["github", "pull request", "merged", "commit", "diff"]
+    },
+    {
+      "id": "code",
+      "display": "code",
+      "logit": 1.4,
+      "terms": [
+        "typescript",
+        "javascript",
+        "python",
+        "rust",
+        "golang",
+        "programming",
+        "source code"
+      ]
+    },
+    {
+      "id": "debugging",
+      "display": "debugging",
+      "logit": 1.2,
+      "terms": ["debug", "stack trace", "traceback", "exception", "breakpoint"]
+    },
+    {
+      "id": "testing",
+      "display": "testing",
+      "logit": 1.2,
+      "terms": ["unit test", "e2e", "vitest", "playwright", "coverage", "assertion"]
+    },
+    {
+      "id": "docs",
+      "display": "docs",
+      "logit": 1.0,
+      "terms": ["documentation", "readme", "guide", "tutorial", "reference", "manual"]
+    },
+    {
+      "id": "react",
+      "display": "React",
+      "logit": 1.5,
+      "terms": ["react", "jsx", "hooks", "next js", "nextjs", "component"]
+    },
+    {
+      "id": "compiler",
+      "display": "compiler",
+      "logit": 1.5,
+      "terms": ["compiler", "llvm", "codegen", "lexer", "parser", "ast"]
+    },
+    {
+      "id": "database",
+      "display": "database",
+      "logit": 1.4,
+      "terms": ["sqlite", "postgres", "indexeddb", "database", "query planner", "b tree"]
+    },
+    {
+      "id": "css",
+      "display": "CSS",
+      "logit": 1.2,
+      "terms": ["css", "flexbox", "grid layout", "tailwind", "stylesheet"]
+    },
+    {
+      "id": "api",
+      "display": "API",
+      "logit": 1.1,
+      "terms": ["rest api", "graphql", "endpoint", "openapi", "sdk"]
+    },
+    {
+      "id": "devops",
+      "display": "deploy",
+      "logit": 1.1,
+      "terms": ["docker", "kubernetes", "ci cd", "deploy", "terraform"]
+    },
+    {
+      "id": "ml",
+      "display": "ML",
+      "logit": 1.3,
+      "terms": ["transformer", "embedding", "inference", "fine tuning", "neural", "llm"]
+    },
+    {
+      "id": "browser-internals",
+      "display": "browser internals",
+      "logit": 1.4,
+      "terms": ["chromium", "v8", "blink", "service worker", "webextension", "extension apis"]
+    },
+    {
+      "id": "performance",
+      "display": "perf",
+      "logit": 1.1,
+      "terms": ["performance", "latency", "benchmark", "p95", "profile", "profiling"]
+    },
+    {
+      "id": "security",
+      "display": "security",
+      "logit": 1.1,
+      "terms": ["xss", "csrf", "cors", "content security policy", "vulnerability", "encryption"]
+    },
+    {
+      "id": "writing",
+      "display": "writing",
+      "logit": 1.0,
+      "terms": ["essay", "draft", "blog post", "newsletter", "manuscript"]
+    },
+    {
+      "id": "design",
+      "display": "design",
+      "logit": 1.0,
+      "terms": ["figma", "mockup", "wireframe", "typography", "design system"]
+    },
+    {
+      "id": "planning",
+      "display": "planning",
+      "logit": 1.0,
+      "terms": ["roadmap", "milestone", "sprint", "gantt", "backlog"]
+    },
+    {
+      "id": "research",
+      "display": "research",
+      "logit": 1.0,
+      "terms": ["paper", "arxiv", "study finds", "literature review", "citation"]
+    },
+    {
+      "id": "finance",
+      "display": "finance",
+      "logit": 1.0,
+      "terms": ["invoice", "budget", "ledger", "expense", "tax return"]
+    },
+    {
+      "id": "email",
+      "display": "email",
+      "logit": 0.4,
+      "terms": ["inbox", "gmail", "newsletter digest"]
+    },
+    {
+      "id": "calendar",
+      "display": "calendar",
+      "logit": 0.4,
+      "terms": ["calendar", "meeting invite", "schedule"]
+    },
+    { "id": "chat", "display": "chat", "logit": 0.3, "terms": ["slack", "discord", "group chat"] },
+    {
+      "id": "shopping",
+      "display": "shopping",
+      "logit": 0.3,
+      "terms": ["cart", "checkout", "price tracker", "order history"]
+    },
+    {
+      "id": "news",
+      "display": "news",
+      "logit": 0.3,
+      "terms": ["breaking news", "headline", "daily briefing"]
+    }
+  ]
+}

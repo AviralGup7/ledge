@@ -44,7 +44,11 @@ export function createSwLocalWorkerHost(deps: { readonly ladder: AiLadder }): Ai
           return { kind: 'artifact', candidate: ran.value, providerId: rung.providerId };
         }
         // Provider error ⇒ circuit-break accounting + next ladder rung (§2.12).
-        deps.ladder.noteFailure({ providerId: rung.providerId, now });
+        // YIELD law (E8-T03): a typed no-confidence yield is NOT a strike — thin
+        // evidence is an absence, not a fault; the next rung runs unconditionally.
+        if (ran.error.details?.['yield'] !== true) {
+          deps.ladder.noteFailure({ providerId: rung.providerId, now });
+        }
       }
       return { kind: 'provider-error', providerId: lastProviderId };
     },

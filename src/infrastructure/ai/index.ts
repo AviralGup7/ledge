@@ -37,3 +37,10 @@ export {
   HEURISTIC_NAMER_MODEL_CLASS,
 } from './providers/heuristic/namer.js';
 export type { MissionNameInput } from './providers/heuristic/namer.js';
+export {
+  createDeferredOnDeviceNamer,
+  createOnDeviceNamer,
+  isOnDeviceYield,
+  ONDEVICE_PROVIDER_ID,
+} from './providers/ondevice/index.js';
+export type { OnDeviceModelHost } from './providers/ondevice/index.js';

@@ -1,0 +1,142 @@
+// E8-T03 · providers/ondevice — ladder rung 2 (ADR-018 chain: heuristic →
+// OnDeviceML → BuiltIn → CloudDepth), the WASM forward-pass namer living in the
+// workroom per Blueprint §9 row 7 (SW-local execution remains legal — the model
+// is stateless bytes, capability-detected identically in both contexts).
+//
+// LAWS THIS MODULE KEEPS:
+//  * CAPABILITY-DETECTED (matrix): absent WebAssembly / bad bytes / layout
+//    violation ⇒ the factory answers null and composition simply does not
+//    register the rung — invisible degrade, no banner, no retry loop.
+//  * YIELD-DON'T-FAKE (fail-down, ADR-018): evidence below the calibration floor
+//    is a typed YIELD (code E_CAPABILITY, details.yield=true, retryable:false),
+//    never an artifact. Hosts pass yields through WITHOUT a breaker strike —
+//    thin evidence is not a provider fault. The ladder's next rung (heuristic)
+//    answers with its honest label instead.
+//  * HONEST VOCABULARY (§5.13): names assemble from lexicon display words +
+//    tabCount only — the model never emits tokens it cannot point to in the
+//    weight table; non-English corpora score nothing and yield.
+//  * ISOLATION (ADR-041 / E8-T02 lint): zero imports of mutation-capable
+//    portraits; the provider's only output type is MemoryArtifactCandidate.
+import type { AiJobKind, MissionNameInput } from '@/application/ports/ai-jobs.port.js';
+import type { MemoryArtifactCandidate } from '@/domain/memory/index.js';
+import { err, ledgeError, ok, type LedgeError, type Result } from '@/shared-kernel/result/index.js';
+import type { AiProviderPort } from '../../ladder.js';
+import { MODEL_CLASS } from './model-layout.js';
+import { loadOnDeviceModel, type OnDeviceModel, type OnDeviceModelHost } from './model-load.js';
+import { calibrate, forwardPass, normalizeText, ONDEVICE_MODEL_V } from './score.js';
+
+export { MODEL_CLASS, ONDEVICE_MODEL_V };
+export type { OnDeviceModelHost } from './model-load.js';
+
+export const ONDEVICE_PROVIDER_ID = 'ondevice';
+/** §2.12 schema stamp for artifact payloads (rows schema-versioned by law). */
+export const ONDEVICE_ARTIFACT_SCHEMA_V = 1;
+export const ONDEVICE_YIELD_REASON = 'insufficient-evidence';
+
+/** A typed YIELD — hosts skip breaker accounting for exactly this shape. */
+export const isOnDeviceYield = (error: LedgeError): boolean =>
+  error.code === 'E_CAPABILITY' && error.details?.['yield'] === true;
+
+const yieldNoConfidence = (): LedgeError =>
+  ledgeError('E_CAPABILITY', {
+    provider: ONDEVICE_PROVIDER_ID,
+    yield: true,
+    why: ONDEVICE_YIELD_REASON,
+  });
+
+const corpusOf = (input: MissionNameInput): string => {
+  const parts: string[] = [];
+  const tabs = input.tabs ?? [];
+  for (const tab of tabs) {
+    if (tab.title.length > 0) parts.push(tab.title);
+    if (tab.discarded !== true && tab.rootDomain.length > 0) parts.push(tab.rootDomain);
+  }
+  if (parts.length === 0) parts.push(...input.rootDomains);
+  return normalizeText(parts.join(' '));
+};
+
+const createNamerFromModel = (model: OnDeviceModel): AiProviderPort => ({
+  providerId: ONDEVICE_PROVIDER_ID,
+  modelClass: MODEL_CLASS,
+  capabilities: ['mission-name'],
+  run: async (job: {
+    readonly kind: AiJobKind;
+    readonly subjectId: string;
+    readonly value: unknown;
+  }): Promise<Result<MemoryArtifactCandidate, LedgeError>> => {
+    const raw = (job.value ?? {}) as Partial<MissionNameInput>;
+    const input: MissionNameInput = {
+      tabCount: typeof raw.tabCount === 'number' && raw.tabCount >= 0 ? raw.tabCount : 0,
+      rootDomains: Array.isArray(raw.rootDomains)
+        ? raw.rootDomains.filter((d): d is string => typeof d === 'string')
+        : [],
+      takenAt: typeof raw.takenAt === 'number' ? raw.takenAt : 0,
+      ...(Array.isArray(raw.tabs) ? { tabs: raw.tabs as MissionNameInput['tabs'] } : {}),
+    };
+    const corpus = corpusOf(input);
+    if (corpus.length === 0) return err(yieldNoConfidence());
+    const evidence = forwardPass(model.kernel, model.weights, corpus);
+    const named = calibrate(evidence, input.tabCount);
+    if (named === null) return err(yieldNoConfidence());
+    return ok({
+      value: named.value,
+      confidence: named.confidence,
+      provider: ONDEVICE_PROVIDER_ID,
+      modelClass: MODEL_CLASS,
+      schemaV: ONDEVICE_ARTIFACT_SCHEMA_V,
+    });
+  },
+});
+
+const capabilityAbsentYield = (cause: LedgeError): LedgeError =>
+  ledgeError('E_CAPABILITY', {
+    provider: ONDEVICE_PROVIDER_ID,
+    yield: true,
+    absent: true,
+    why: cause.details?.['what'] ?? cause.code,
+  });
+
+/**
+ * Capability-detected factory: answers the provider, or null when the model
+ * cannot load (invisible degrade law — composition registers one rung fewer).
+ * Memoized per graph: model load is verified bytes + one instantiation.
+ */
+export const createOnDeviceNamer = async (
+  host?: OnDeviceModelHost,
+): Promise<AiProviderPort | null> => {
+  const resolved: OnDeviceModelHost = host ?? {
+    hasWebAssembly: typeof WebAssembly !== 'undefined',
+  };
+  const loaded = await loadOnDeviceModel(resolved);
+  if (!loaded.ok) return null;
+  return createNamerFromModel(loaded.value);
+};
+
+/**
+ * DEFERRED rung for synchronous composition (roots law: graphs compose sync;
+ * capability detection is async). The registered provider resolves the model
+ * single-flight on first use; capability absence answers a typed YIELD forever
+ * (details.yield=true — hosts never strike the breaker), which is the invisible
+ * degrade expressed inside the sync-composition contract. The ai-lanes probe
+ * keeps showing the rung's breaker cell (evidence, never a banner).
+ */
+export const createDeferredOnDeviceNamer = (host?: OnDeviceModelHost): AiProviderPort => {
+  const resolvedHost: OnDeviceModelHost = host ?? {
+    hasWebAssembly: typeof WebAssembly !== 'undefined',
+  };
+  let settled: Promise<Result<OnDeviceModel, LedgeError>> | null = null;
+  const load = (): Promise<Result<OnDeviceModel, LedgeError>> => {
+    settled ??= loadOnDeviceModel(resolvedHost);
+    return settled;
+  };
+  return {
+    providerId: ONDEVICE_PROVIDER_ID,
+    modelClass: MODEL_CLASS,
+    capabilities: ['mission-name'],
+    run: async (job) => {
+      const model = await load();
+      if (!model.ok) return err(capabilityAbsentYield(model.error));
+      return createNamerFromModel(model.value).run(job);
+    },
+  };
+};

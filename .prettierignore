@@ -13,3 +13,10 @@ ops/tests/perf/baselines/*.json
 # E8-T02: planted lint-fixture violations are content-owned by the isolation
 # gate (the gate proves it catches them); prettier must not "fix" the hostility.
 ops/fixtures/lint/*.fixture.ts
+# E8-T03: on-device model payloads are builder-owned bytes — check:ondevice-model
+# is a byte-equality gate against tools/ondevice-model/build-model.mjs, so
+# prettier must not re-canonicalize the generated modules.
+src/infrastructure/ai/providers/ondevice/model/
+# E8-T03: the shadow corpus is a serializer-owned seeded artifact (gen.mjs owns
+# the bytes; check:shadow-corpus/shadow-eval byte-compare before judging).
+ops/shadow-corpus/missions.json

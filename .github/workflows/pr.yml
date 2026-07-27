@@ -29,6 +29,10 @@ jobs:
         run: pnpm check:dep-policy
       - name: ADR-041 isolation + R7/R18 confidence gates (E8-T02)
         run: pnpm check:isolation
+      - name: On-device model derivation law (E8-T03)
+        run: pnpm check:ondevice-model
+      - name: Shadow eval ai-shadow-eval-v1 — OnDevice beats heuristic (E8-T03)
+        run: pnpm check:shadow-eval
       - name: Typecheck
         run: pnpm typecheck
   test:
