@@ -6,7 +6,7 @@ jobs:
   heavy-seeds:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with: { node-version-file: .nvmrc, cache: pnpm }
@@ -20,7 +20,7 @@ jobs:
     # injection, G1 evidence reproducibility. Release-blocking per M1 exit row.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with: { node-version-file: .nvmrc, cache: pnpm }
@@ -33,7 +33,7 @@ jobs:
     # the committed baseline (ops/tests/perf/baselines/). Report artifacts upload.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with: { node-version-file: .nvmrc, cache: pnpm }
@@ -50,6 +50,6 @@ jobs:
   hygiene-report:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Dead-code + TODO/TEMP expiry sweep (quarterly ritual is human; nightly only reports)
         run: grep -RInE "TEMP\(|TODO\(" src entrypoints || echo "no debt markers found"
