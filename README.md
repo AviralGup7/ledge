@@ -2,8 +2,21 @@
 
 **Never lose a thought.** An AI-powered tab & session manager — park without loss, resume with context, find anything. Local-first, private, MV3-native.
 
-> Pre-production scaffold (M0). Governing documents are LOCKED and live in `docs/governance/` — read them before writing code:
+> v1 vertical is built and gated (EPICs E1–E6 shipped; E7 reliability ops in flight — see `docs/governance/ledge-implementation-roadmap.md`). Governing documents are LOCKED and live in `docs/governance/` — read them before writing code:
 > Vision → Spec → ADR → Blueprint → Execution Spec → Roadmap → **Constitution (read this one twice)**.
+
+## The documents map (30 minutes well spent)
+
+| Where                             | What                                                                                |
+| --------------------------------- | ----------------------------------------------------------------------------------- |
+| `docs/governance/`                | The seven locked documents (append-only canon)                                      |
+| `docs/degradation-matrix.md`      | What the product does when every dependency misbehaves (witness-pinned)             |
+| `docs/threat-model.md`            | Boundaries, attacker classes, mitigations, §7.5 gate census                         |
+| `docs/runbooks/`                  | One failure playbook per Blueprint §9 row (detect → confirm → act → repair → drill) |
+| `docs/accessibility-checklist.md` | §7.4 zero-defect program — clause × surface matrix + manual protocols               |
+| `seeds/README.md`                 | Regression seed corpus — every defect lands a failing test first (T-01 gate)        |
+| `ops/fixtures/FIXTURES.md`        | Import-corpus attribution log (privacy-clean, byte-honest)                          |
+| `docs/adr-notes/`                 | Per-milestone decision records (fork rulings with refinements)                      |
 
 ## Prerequisites
 
