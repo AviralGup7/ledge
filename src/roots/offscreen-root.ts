@@ -16,6 +16,7 @@ import { isAbsencePreferredKind } from '@/application/ports/ai-jobs.port.js';
 import type { MemoryArtifactCandidate } from '@/domain/memory/index.js';
 import { createAiLadder, createHeuristicNamer } from '@/infrastructure/ai/index.js';
 import { createOnDeviceNamer } from '@/infrastructure/ai/providers/ondevice/index.js';
+import { createBuiltInNamer } from '@/infrastructure/ai/providers/builtin/index.js';
 import type { LedgeError, Result } from '@/shared-kernel/result/index.js';
 
 const WORKROOM_CONTEXT = 'offscreen' as const;
@@ -41,12 +42,19 @@ export interface WorkroomJobExecutor {
   }) => Promise<WorkroomJobOutcome>;
 }
 
-/** Default workroom ladder (E8-T03): on-device rung registers when the model
- *  verifies, heuristic stands last. Yields fall to the next rung; failure
- *  classes ride the wire for SW classification. */
+/** Default workroom ladder (E8-T03, E8-T06): the calibrated on-device rung
+ *  registers when the model verifies, the generative BuiltIn rung when the
+ *  document-context LanguageModel reports ready (absent/downloadable ⇒
+ *  invisible degrade, ADR-note K1), heuristic stands last. Yields fall to
+ *  the next rung; failure classes ride the wire for SW classification. */
 const createWorkroomExecutor = async (): Promise<WorkroomJobExecutor> => {
   const ondevice = await createOnDeviceNamer();
-  const providers = [...(ondevice !== null ? [ondevice] : []), createHeuristicNamer()];
+  const builtin = await createBuiltInNamer();
+  const providers = [
+    ...(ondevice !== null ? [ondevice] : []),
+    ...(builtin !== null ? [builtin] : []),
+    createHeuristicNamer(),
+  ];
   const ladder = createAiLadder({ providers });
   return {
     execute: async (job) => {

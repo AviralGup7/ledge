@@ -44,3 +44,17 @@ export {
   ONDEVICE_PROVIDER_ID,
 } from './providers/ondevice/index.js';
 export type { OnDeviceModelHost } from './providers/ondevice/index.js';
+export {
+  BUILTIN_CONFIDENCE,
+  BUILTIN_MODEL_CLASS,
+  BUILTIN_PROVIDER_ID,
+  createBuiltInNamer,
+  createDeferredBuiltInNamer,
+  detectBuiltIn,
+} from './providers/builtin/index.js';
+export type {
+  BuiltInAiHost,
+  BuiltInDetection,
+  BuiltInLanguageModel,
+  BuiltInSession,
+} from './providers/builtin/index.js';
