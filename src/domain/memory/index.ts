@@ -17,3 +17,11 @@ export type {
 } from './artifact.js';
 export { briefsGate } from './brief-gate.js';
 export type { BriefGateArtifact, BriefGateDecision } from './brief-gate.js';
+export {
+  NUDGE_DAILY_CAP,
+  NUDGE_DISMISS_FOREVER_COUNT,
+  NUDGE_DISMISS_SUPPRESS_MS,
+  localMidnightFloor,
+  nudgeWindow,
+} from './nudge-timing.js';
+export type { NudgeDismissalMemory, NudgeWindowDecision } from './nudge-timing.js';

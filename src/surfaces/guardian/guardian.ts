@@ -20,6 +20,7 @@ import { createViewStore, viewFrameOf, type ViewStore } from '../components/stat
 import { createHeartbeatPill, type HeartbeatPill } from '../components/widgets/heartbeat.js';
 import { renderBriefCard, type PendingBrief } from '../components/widgets/brief-card.js';
 import { renderDupeStrip, type DupeGroupModel } from '../components/widgets/dupe-strip.js';
+import { renderNudgeCard, type SprawlNudgeModel } from '../components/widgets/nudge-card.js';
 import {
   actionButton,
   renderMissionCard,
@@ -69,6 +70,22 @@ export interface GuardianDeps {
         readonly list: () => Promise<readonly DupeGroupModel[]>;
         readonly park: (canonHash: string, keepBrowserTabId: number) => void;
         readonly onIgnore?: ((canonHash: string) => void) | undefined;
+      }
+    | undefined;
+  /**
+   * E8-T08 nudge seam (Spec §5.8 one-a-day slot · §6.10 errs-to-never ·
+   * ADR note e8-sprawl-nudge): `pending` answers the day's single offer or
+   * null (absence is the default state); `park` is the ONE gesture (rides
+   * the stale cohort re-derivation at the service); `dismiss` records the
+   * §6.10 misfire (+1 for the type: 14-day window, third ⇒ forever).
+   * OPT-IN LAW: the surface never calls `park`/`dismiss` except from an
+   * explicit tap. Default: absence (no card).
+   */
+  readonly nudges?:
+    | {
+        readonly pending: () => Promise<SprawlNudgeModel | null>;
+        readonly park: (offerId: string) => void;
+        readonly dismiss: (offerId: string) => void;
       }
     | undefined;
 }
@@ -180,6 +197,12 @@ export const mountGuardian = (doc: Document, deps: GuardianDeps): Mounted => {
     cls: 'guardian-dupes',
     attrs: { 'data-section': 'dupes', 'aria-label': copyOf('msg.aria.dupes') },
   });
+  // E8-T08: the one-nudge-per-day slot sits with the hygiene cluster, right
+  // above the open-tab inventory it relieves (err-to-never: absent⇒nothing).
+  const nudgeSlot = el(doc, 'section', {
+    cls: 'guardian-nudge',
+    attrs: { 'data-section': 'nudge', 'aria-label': copyOf('msg.aria.nudge') },
+  });
   const openSection = el(doc, 'section', {
     cls: 'guardian-open',
     attrs: { 'data-section': 'open', 'aria-label': copyOf('msg.aria.tabs') },
@@ -205,6 +228,7 @@ export const mountGuardian = (doc: Document, deps: GuardianDeps): Mounted => {
   root.appendChild(pendingStrip);
   root.appendChild(recoverySlot);
   root.appendChild(dupeSlot);
+  root.appendChild(nudgeSlot);
   root.appendChild(openSection);
   root.appendChild(briefSlot);
   root.appendChild(missionsSection);
@@ -292,6 +316,43 @@ export const mountGuardian = (doc: Document, deps: GuardianDeps): Mounted => {
       })
       .catch(() => {
         // Seam fault: the strip is a nicety — open tabs below remain truth.
+      });
+  };
+
+  // ── E8-T08 nudge slot (opt-in law: gestures fire ONLY from taps) ────────
+  // Like the dupe strip there is no local stickiness: the SERVICE keeps the
+  // day sticky (same offer, same day re-answers itself — a re-render is the
+  // same whisper), so a fresh re-pull here can never double-speak.
+  const renderNudgeSlot = (): void => {
+    const seam = deps.nudges;
+    if (seam === undefined || !booted) {
+      clearChildren(nudgeSlot);
+      return; // absence-by-default
+    }
+    void seam
+      .pending()
+      .then((offer) => {
+        clearChildren(nudgeSlot);
+        if (offer === null) return; // calm absence — silence is the default
+        nudgeSlot.appendChild(
+          renderNudgeCard(doc, offer, {
+            onPark: (offerId) => {
+              seam.park(offerId);
+              // Truth re-pull: parked rows stop being stale-live; when the
+              // cohort dissolves under the floor the next pull answers null.
+              renderNudgeSlot();
+            },
+            onDismiss: (offerId) => {
+              seam.dismiss(offerId);
+              // The §6.10 memory lands async; the local remove is honest
+              // (the next fresh pull would answer suppressed anyway).
+              clearChildren(nudgeSlot);
+            },
+          }),
+        );
+      })
+      .catch(() => {
+        // Seam fault: silence. The one-a-day slot never becomes noise.
       });
   };
 
@@ -593,6 +654,9 @@ export const mountGuardian = (doc: Document, deps: GuardianDeps): Mounted => {
     // E8-T07: the dupe strip's first pull (later seeds re-pull via the store
     // subscription; every render is fresh truth — groups dissolve on park).
     renderDupeSlot();
+    // E8-T08: the day's whisper checks its window at boot completion (the
+    // service's day-stickiness makes every later re-pull the SAME whisper).
+    renderNudgeSlot();
     // First-run posture: nothing kept and nothing parked ⇒ offer FirstRunIngest.
     if (b.heartbeat.keptCount === 0 && b.missions.length === 0) {
       clearChildren(recoverySlot);
@@ -729,6 +793,10 @@ export const mountGuardian = (doc: Document, deps: GuardianDeps): Mounted => {
       // E8-T07: open-tab truth moved — re-derive the strip (parked groups
       // dissolve; the seam's settings memory keeps ignores).
       renderDupeSlot();
+      // E8-T08: same re-pull for the whisper (cohort dissolved under the
+      // floor ⇒ the card quietly goes; service-stickiness keeps the count
+      // stable while evidence stands).
+      renderNudgeSlot();
     }
   });
 

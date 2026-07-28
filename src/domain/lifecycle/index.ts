@@ -8,6 +8,13 @@ export {
   DUPE_GROUP_STRIP_CAP,
   findDupeGroups,
 } from './policies/dupe-groups.js';
+export type { SprawlTabEvidence } from './policies/sprawl.js';
+export {
+  SPRAWL_MIN_STALE_COUNT,
+  SPRAWL_STALE_AGE_MS,
+  sprawlOfferable,
+  sprawlStaleTabs,
+} from './policies/sprawl.js';
 export type {
   Decision,
   InverseAtom,

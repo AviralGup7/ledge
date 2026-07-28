@@ -252,6 +252,23 @@ export const EVENT_REGISTRY = {
       'briefArtifactId?': 'id',
     },
   },
+  // E8-T08 (R15 · Spec §6.10): ONE offer fact per surfaced nudge — the daily
+  // whisper's audit trail (the day-cap counters themselves are R15 meta rows,
+  // NOT journal truth; this event is memory's record that the surface spoke).
+  // dayBucket is the device-local-midnight floor (R15; no cross-day carry).
+  NudgeOffered: {
+    schemaV: 1,
+    producer: 'Policy',
+    consumers: ['NudgeModel', 'MemoryView'],
+    idempotentBy: 'nudgeOfferId',
+    fields: {
+      nudgeOfferId: 'id',
+      nudgeType: 'string',
+      dayBucket: 'number',
+      staleCount: 'number',
+      offeredAt: 'number',
+    },
+  },
   MemoryWiped: {
     schemaV: 1,
     producer: 'ForgetEverything',

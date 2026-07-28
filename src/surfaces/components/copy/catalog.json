@@ -13,6 +13,9 @@
       "heading": "Copies of the same page",
       "copies": "{count} copies open"
     },
+    "nudge": {
+      "sprawl": "{count} tabs from last week — park them?"
+    },
     "empty": {
       "strip": "Nothing open. Everything is kept.",
       "archive": "Your future library. Park something and it will be here.",
@@ -57,6 +60,7 @@
       "park-group": "Park group",
       "park-window": "Park window",
       "park-all": "Park everything",
+      "park-stale": "Park {count} tabs",
       "start-mission": "Start a mission",
       "first-run": "Bring my open tabs in",
       "resume": "Resume",
@@ -93,6 +97,7 @@
       "scan-full-confirm": "Run it anyway",
       "download-bundle": "Download diagnostics bundle",
       "dismiss-brief": "Don't show again",
+      "not-now": "Not now",
       "park-dupes": "Park {count} older copies",
       "ignore": "Ignore"
     },
@@ -142,7 +147,8 @@
       "close": "Close",
       "input": "Input",
       "brief": "Resumption brief",
-      "dupes": "Duplicate tabs"
+      "dupes": "Duplicate tabs",
+      "nudge": "Daily suggestion"
     },
     "section": {
       "library": "Library",

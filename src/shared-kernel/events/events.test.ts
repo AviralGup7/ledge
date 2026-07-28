@@ -23,10 +23,12 @@ const fixtures = (
 ).fixtures;
 
 describe('E1-T07 registry completeness (EES §4 table)', () => {
-  it('declares exactly the 32 concrete v1 types (31 locked + the E8-T05 appended row)', () => {
+  it('declares exactly the 33 concrete v1 types (31 locked + two A-09-appended rows)', () => {
     // E8-T05 (A-09 append-only amendment, docs/adr-notes/e8-resumption-briefs.md
     // J4): BriefDismissed — the §6.9/W5 "don't show again" preference event.
-    expect(Object.keys(EVENT_REGISTRY)).toHaveLength(32);
+    // E8-T08 (A-09 append-only amendment, docs/adr-notes/e8-sprawl-nudge.md N2):
+    // NudgeOffered (R15) — the one-a-day whisper's audit trail (roadmap M7-WP3).
+    expect(Object.keys(EVENT_REGISTRY)).toHaveLength(33);
   });
 
   it('every row is schemaV:1 with producer, consumers and a field table', () => {

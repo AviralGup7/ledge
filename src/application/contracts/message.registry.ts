@@ -313,6 +313,16 @@ export const MESSAGE_REGISTRY: Readonly<Record<string, MessageSpec>> = {
     payload: { canonHash: 'string', ignored: 'boolean' },
     response: {},
   },
+  // E8-T08 (§5.8/§6.10 · R15): the sprawl whisper's two gestures, reserved
+  // dormant — today the surface rides the application seam directly (the
+  // same J3-style reserve as the E8-T05 brief wire and the E8-T07 dupe wire).
+  DismissSprawlNudge: {
+    kind: 'command',
+    family: 'command',
+    availability: 'v1.1',
+    payload: { offerId: 'string' },
+    response: {},
+  },
 
   // ── §3.4 Queries (Surface → SW) ─────────────────────────────────────────────────
   GetBootstrap: {
@@ -427,6 +437,13 @@ export const MESSAGE_REGISTRY: Readonly<Record<string, MessageSpec>> = {
     availability: 'v1.1',
     payload: {},
     response: { groups: { array: 'unknown' } },
+  },
+  GetPendingNudge: {
+    kind: 'query',
+    family: 'query',
+    availability: 'v1.1',
+    payload: {},
+    response: { nudge: 'unknown' },
   },
 
   // ── §3.5 Streams (SW → Surface) ─────────────────────────────────────────────────

@@ -89,6 +89,7 @@ const mount = (options?: {
   readonly ackResponder?: (env: SentEnvelope) => unknown;
   readonly briefs?: GuardianDeps['briefs'];
   readonly dupes?: GuardianDeps['dupes'];
+  readonly nudges?: GuardianDeps['nudges'];
 }): GuardianHarness => {
   const doc = new FakeDocument();
   const fake = createFakeTransport();
@@ -100,6 +101,7 @@ const mount = (options?: {
     entropy: createTestEntropy(),
     ...(options?.briefs !== undefined ? { briefs: options.briefs } : {}),
     ...(options?.dupes !== undefined ? { dupes: options.dupes } : {}),
+    ...(options?.nudges !== undefined ? { nudges: options.nudges } : {}),
     onWake: (listener) => {
       wakeListener = listener;
       return () => {
@@ -775,6 +777,119 @@ describe('E8-T07 guardian · dupe strip (Spec "marks, does not close" · opt-in 
     await flush();
     expect(faulty.doc.body.querySelector('[data-widget="dupe-strip"]')).toBeNull();
     expect(faulty.doc.body.querySelector('[role="alert"]')).toBeNull(); // no tantrum
+    faulty.unmount();
+  });
+});
+
+describe('E8-T08 guardian · sprawl nudge (Spec §5.8 one-a-day · errs-to-never)', () => {
+  const OFFER = { offerId: 'offer-1', staleCount: 7 };
+
+  const cardOf = (doc: FakeDocument): FakeElement | null =>
+    doc.body.querySelector('[data-widget="nudge-card"]');
+
+  it('N1: an offer renders one honest card — cohort count verbatim — with both gestures', async () => {
+    const { doc, fake, unmount } = mount({
+      nudges: {
+        pending: () => Promise.resolve(OFFER),
+        park: () => undefined,
+        dismiss: () => undefined,
+      },
+    });
+    await settleBoot(fake);
+    await flush();
+    const card = cardOf(doc);
+    expect(card).not.toBeNull();
+    expect(card?.textContent).toContain('7 tabs from last week');
+    expect(mustQuery(section(doc, 'nudge'), '[data-action="park-stale"]').textContent).toContain(
+      'Park 7 tabs',
+    );
+    expect(mustQuery(section(doc, 'nudge'), '[data-action="dismiss-nudge"]').textContent).toContain(
+      'Not now',
+    );
+    const sections = doc.body
+      .querySelectorAll('[data-section]')
+      .map((n) => n.getAttribute('data-section'));
+    expect(sections.indexOf('nudge')).toBeGreaterThan(sections.indexOf('dupes'));
+    expect(sections.indexOf('nudge')).toBeLessThan(sections.indexOf('open'));
+    unmount();
+  });
+
+  it('N2 · CRITERION (opt-in law): zero gestures until the tap; park fires once and truth re-pulls', async () => {
+    const parks: string[] = [];
+    const dismissals: string[] = [];
+    let pendingCalls = 0;
+    const { doc, fake, unmount } = mount({
+      nudges: {
+        pending: () => {
+          pendingCalls += 1;
+          return Promise.resolve(parks.length === 0 ? OFFER : null); // cohort parked: whisper goes
+        },
+        park: (offerId) => parks.push(offerId),
+        dismiss: (offerId) => dismissals.push(offerId),
+      },
+    });
+    await settleBoot(fake);
+    await flush();
+    expect(parks).toHaveLength(0);
+    expect(dismissals).toHaveLength(0); // render never acts
+    const before = pendingCalls;
+    mustQuery(section(doc, 'nudge'), '[data-action="park-stale"]').click();
+    await flush();
+    expect(parks).toEqual([OFFER.offerId]);
+    expect(dismissals).toHaveLength(0);
+    expect(pendingCalls).toBe(before + 1); // re-pull after the gesture
+    expect(cardOf(doc)).toBeNull(); // cohort dissolved ⇒ calm absence
+    unmount();
+  });
+
+  it('N3: "Not now" records the misfire exactly once and the card goes quietly', async () => {
+    const dismissals: string[] = [];
+    const parks: string[] = [];
+    const { doc, fake, unmount } = mount({
+      nudges: {
+        pending: () => Promise.resolve(OFFER),
+        park: (offerId) => parks.push(offerId),
+        dismiss: (offerId) => dismissals.push(offerId),
+      },
+    });
+    await settleBoot(fake);
+    await flush();
+    mustQuery(section(doc, 'nudge'), '[data-action="dismiss-nudge"]').click();
+    await flush();
+    expect(dismissals).toEqual([OFFER.offerId]);
+    expect(parks).toHaveLength(0); // dismissal never closes anything
+    expect(cardOf(doc)).toBeNull();
+    unmount();
+  });
+
+  it('N4: silence is the default — no seam, a null offer, or a seam fault all render nothing', async () => {
+    const plain = mount();
+    await settleBoot(plain.fake);
+    await flush();
+    expect(cardOf(plain.doc)).toBeNull();
+    plain.unmount();
+    const none = mount({
+      nudges: {
+        pending: () => Promise.resolve(null),
+        park: () => undefined,
+        dismiss: () => undefined,
+      },
+    });
+    await settleBoot(none.fake);
+    await flush();
+    expect(cardOf(none.doc)).toBeNull();
+    none.unmount();
+    const faulty = mount({
+      nudges: {
+        pending: () => Promise.reject(new Error('wire down')),
+        park: () => undefined,
+        dismiss: () => undefined,
+      },
+    });
+    await settleBoot(faulty.fake);
+    await flush();
+    expect(cardOf(faulty.doc)).toBeNull();
+    expect(faulty.doc.body.querySelector('[role="alert"]')).toBeNull(); // never noise
     faulty.unmount();
   });
 });

@@ -23,6 +23,8 @@ import type { PrefsService } from './prefs.js';
 import { createPrefsService } from './prefs.js';
 import type { DupesService } from './dupes.js';
 import { createDupesService } from './dupes.js';
+import type { NudgesService } from './nudges.js';
+import { createNudgesService } from './nudges.js';
 import type { AiJobsService } from './ai-jobs.js';
 import { createAiJobsService } from './ai-jobs.js';
 import type { TabsInternalService } from './tabs-internal.js';
@@ -44,6 +46,14 @@ export type { RecoveryService } from './recovery.js';
 export type { PrefsService } from './prefs.js';
 export type { DupesService } from './dupes.js';
 export { DUPE_IGNORE_PREFIX } from './dupes.js';
+export type { NudgesService, SprawlNudgeOffer } from './nudges.js';
+export {
+  META_NUDGE_DAY_PREFIX,
+  META_NUDGE_DISMISS_PREFIX,
+  NUDGE_TYPE_SPRAWL,
+  SETTING_SUGGESTIONS_ALL,
+  SETTING_SUGGESTIONS_NUDGES,
+} from './nudges.js';
 export type { TabsInternalService } from './tabs-internal.js';
 
 /** The public application surface (one service per use-case family). */
@@ -60,6 +70,8 @@ export interface AppServices {
   readonly prefs: PrefsService;
   /** E8-T07 dupe markers→actions (opt-in law; parks older copies only). */
   readonly dupes: DupesService;
+  /** E8-T08 the one-a-day sprawl whisper (§6.10/R15; errs to never). */
+  readonly nudges: NudgesService;
   readonly tabs: TabsInternalService;
   /** E8-T01 AI job pipeline service — ABSENT when deps.ai is unwired (hosts
    *  without the AI graph; the ai-lanes probe reports honest grey there). */
@@ -91,6 +103,14 @@ export const createServices = (deps: ServiceDeps): AppServices => {
     // E8-T07: the strip's one-tap action rides the flagship park vocabulary
     // per tab (composition seam — the use-case never reaches adapters itself).
     dupes: createDupesService(edge, { parkTab: (input, ctx) => park.parkTab(input, ctx) }),
+    // E8-T08: same park vocabulary for the whisper's gesture; the R15 bucket
+    // clock rides the HOST offset (getTimezoneOffset is minutes-behind-UTC,
+    // so the local-midnight floor wants its negation).
+    nudges: createNudgesService(
+      edge,
+      { parkTab: (input, ctx) => park.parkTab(input, ctx) },
+      { offsetMinutes: () => -new Date().getTimezoneOffset() },
+    ),
     tabs: createTabsInternalService(edge),
     ...(deps.ai !== undefined ? { aiJobs: createAiJobsService(edge, deps.ai) } : {}),
   };
