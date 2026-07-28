@@ -25,6 +25,16 @@ import { renderStateBlock } from '../components/widgets/states.js';
 const OVERLAY_CONTEXT: SenderContext = 'overlay';
 const RESULT_LIMIT = 20;
 
+/** E8-T09: the switcher's read-model row (the C28 surface's data — wire
+ *  shape at the tier flip; today the composition seam answers it). */
+export interface SwitcherItemModel {
+  readonly missionId: string;
+  readonly name: string;
+  readonly cls: 'open' | 'parked';
+  readonly tabCount: number;
+  readonly windowId: number | null;
+}
+
 export interface OverlayDeps {
   readonly transport: WireTransport;
   readonly entropy: CidEntropy;
@@ -33,6 +43,20 @@ export interface OverlayDeps {
   /** Close seam (root wires window.close / panel teardown). */
   readonly close: () => void;
   readonly contractHash?: string | undefined;
+  /**
+   * E8-T09 switcher seam (Spec W8 + EES C28 chain). `list` answers the W8
+   * order (open-first, parked-next); `switch` executes the single intent —
+   * parkCurrent's source window is the ROOT's to know (the overlay is not
+   * the user's window). The seam arrives at the v1.1 tier flip (SwitchMission
+   * is dormant wire today); ABSENT ⇒ the command door ('>' prefix) is
+   * disabled and '>' searches things like any other text (absence-by-default).
+   */
+  readonly switcher?:
+    | {
+        readonly list: () => Promise<readonly SwitcherItemModel[]>;
+        readonly switch: (targetMissionId: string, parkCurrent: boolean) => Promise<void>;
+      }
+    | undefined;
 }
 
 export interface Mounted {
@@ -71,6 +95,21 @@ const itemOf = (hit: SearchHitWire, index: number): PaletteItem => ({
 });
 
 const DEBOUNCE_MS = 150;
+
+// ── E8-T09 doors (§9: "one search engine, two doors") ─────────────────────
+// 'things' is the default scope; '>' opens the command door (§5.4 verb-first,
+// same mechanism); the switch verb enters W8's switcher mode. Escape steps
+// BACK out of a mode before it closes the overlay (one gesture per level).
+type OverlayMode = 'things' | 'switcher';
+const COMMAND_DOOR_PREFIX = '>';
+const SWITCH_VERB_ID = 'verb.switch-mission';
+
+const missionItemOf = (m: SwitcherItemModel): PaletteItem => ({
+  id: `mission.${m.missionId}`,
+  title: m.name,
+  sub: copyOf('msg.count.tabs', { count: m.tabCount }),
+  group: m.cls,
+});
 
 export const mountOverlay = (doc: Document, deps: OverlayDeps): Mounted => {
   const client: WireClient = createWireClient({
@@ -137,7 +176,89 @@ export const mountOverlay = (doc: Document, deps: OverlayDeps): Mounted => {
     });
   };
 
-  const activate = (item: PaletteItem): void => {
+  // ── E8-T09 mode state (default door: 'things'; W8: 'switcher') ──────────
+  let mode: OverlayMode = 'things';
+  let switcherItems: readonly SwitcherItemModel[] = [];
+  const itemByMissionId = new Map<string, string>();
+
+  const renderSwitcherItems = (q: string): void => {
+    const want = q.trim().toLowerCase();
+    const shown =
+      want.length === 0
+        ? switcherItems
+        : switcherItems.filter((m) => m.name.toLowerCase().includes(want));
+    const items = shown.map(missionItemOf);
+    itemByMissionId.clear();
+    for (const [index, item] of items.entries()) {
+      const m = shown[index];
+      if (m !== undefined) itemByMissionId.set(item.id, m.missionId);
+    }
+    palette.setItems(items);
+    palette.setNote(
+      items.length === 0 ? copyOf('msg.empty.switch') : copyOf('msg.hint.switch-modifier'),
+    );
+  };
+
+  const enterSwitcherMode = (): void => {
+    const seam = deps.switcher;
+    if (seam === undefined) return; // absence-by-default: the door stays shut
+    mode = 'switcher';
+    palette.setLoading(true);
+    void seam
+      .list()
+      .then((rows) => {
+        if (mode !== 'switcher') return; // escaped while loading
+        palette.setLoading(false);
+        switcherItems = rows;
+        palette.setQuery('');
+        renderSwitcherItems('');
+      })
+      .catch(() => {
+        palette.setLoading(false);
+        exitSwitcherMode(); // a door that cannot read closes back to things
+      });
+  };
+
+  const exitSwitcherMode = (): void => {
+    mode = 'things';
+    switcherItems = [];
+    itemByMissionId.clear();
+    palette.setQuery('');
+    palette.setItems([]);
+    palette.setNote(undefined);
+    lastQuery = '';
+  };
+
+  const activate = (item: PaletteItem, mods?: { readonly alt: boolean } | undefined): void => {
+    // E8-T09 · command door: the switch verb enters W8's switcher mode.
+    if (item.id === SWITCH_VERB_ID && deps.switcher !== undefined) {
+      enterSwitcherMode();
+      return;
+    }
+    // E8-T09 · switcher mode: choose a mission — Alt = "park current, then
+    // switch" (W8's optional modifier; the chain's atomicity is the service's).
+    if (mode === 'switcher') {
+      const seam = deps.switcher;
+      const missionId = itemByMissionId.get(item.id);
+      if (seam === undefined || missionId === undefined) return;
+      live.say(copyOf('msg.state.pending'));
+      void seam
+        .switch(missionId, mods?.alt === true)
+        .then(() => deps.close())
+        .catch((e: unknown) => {
+          showError({
+            code:
+              e instanceof Error &&
+              'code' in e &&
+              typeof (e as { code?: unknown }).code === 'string'
+                ? ((e as { code: string }).code as string)
+                : 'E_IO',
+            messageKey: 'msg.error.output',
+            recoveryKey: 'msg.recover.report',
+          });
+        });
+      return;
+    }
     const hit = hitByItemId.get(item.id);
     if (hit === undefined) return;
     if (hit.state === 'kept') {
@@ -164,6 +285,24 @@ export const mountOverlay = (doc: Document, deps: OverlayDeps): Mounted => {
     onQuery: (q) => {
       lastQuery = q;
       cancelDebounce?.();
+      if (mode === 'switcher') {
+        renderSwitcherItems(q);
+        return;
+      }
+      // E8-T09: '>' opens the command door ONLY with a seam (absence-by-default:
+      // no seam ⇒ '>' is ordinary search text, the door stays invisible).
+      if (deps.switcher !== undefined && q.startsWith(COMMAND_DOOR_PREFIX)) {
+        const want = q.slice(COMMAND_DOOR_PREFIX.length).trimStart().toLowerCase();
+        const verb: PaletteItem = {
+          id: SWITCH_VERB_ID,
+          title: copyOf('msg.verb.switch-mission'),
+          sub: copyOf('msg.hint.switch-modifier'),
+        };
+        palette.setItems(verb.title.toLowerCase().includes(want) ? [verb] : []);
+        palette.setNote(undefined);
+        clearChildren(statusSlot);
+        return;
+      }
       if (q.trim().length === 0) {
         hits = [];
         palette.setItems([]);
@@ -174,7 +313,14 @@ export const mountOverlay = (doc: Document, deps: OverlayDeps): Mounted => {
       cancelDebounce = deps.debounce(DEBOUNCE_MS, () => runSearch(lastQuery));
     },
     onActivate: activate,
-    onClose: () => deps.close(),
+    onClose: () => {
+      // One Escape per level: a mode closes before the overlay does.
+      if (mode === 'switcher') {
+        exitSwitcherMode();
+        return;
+      }
+      deps.close();
+    },
   });
 
   root.appendChild(palette.root);

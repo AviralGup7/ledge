@@ -16,6 +16,9 @@
     "nudge": {
       "sprawl": "{count} tabs from last week — park them?"
     },
+    "verb": {
+      "switch-mission": "Switch to a mission"
+    },
     "empty": {
       "strip": "Nothing open. Everything is kept.",
       "archive": "Your future library. Park something and it will be here.",
@@ -28,7 +31,8 @@
       "detail": "This mission holds no tabs.",
       "topics": "No topics yet.",
       "results": "Nothing to show here.",
-      "settings": "No settings changed yet."
+      "settings": "No settings changed yet.",
+      "switch": "Nothing to switch to yet."
     },
     "state": {
       "loading": "Loading…",
@@ -124,7 +128,8 @@
       "confirm-purge": "Deleting from the Trash is permanent. Confirm to delete.",
       "rescue": "A place to check the archive's health and repair views.",
       "topics": "Correct a topic and Ledge learns from it.",
-      "history": "What changed, latest first."
+      "history": "What changed, latest first.",
+      "switch-modifier": "Alt+Enter parks the current window first"
     },
     "note": {
       "fallback": "Keyword results while deeper search warms up.",
@@ -148,7 +153,8 @@
       "input": "Input",
       "brief": "Resumption brief",
       "dupes": "Duplicate tabs",
-      "nudge": "Daily suggestion"
+      "nudge": "Daily suggestion",
+      "switch": "Switch missions"
     },
     "section": {
       "library": "Library",

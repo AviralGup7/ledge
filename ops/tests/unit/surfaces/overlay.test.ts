@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { copyOf } from '@/surfaces/components/copy/copy.js';
 import { mountOverlay, type Mounted } from '@/surfaces/overlay/overlay.js';
+import type { OverlayDeps, SwitcherItemModel } from '@/surfaces/overlay/overlay.js';
 import {
   FakeDocument,
   asDocument,
@@ -30,7 +31,7 @@ interface OverlayHarness {
   readonly unmount: () => void;
 }
 
-const mount = (): OverlayHarness => {
+const mount = (options?: { readonly switcher?: OverlayDeps['switcher'] }): OverlayHarness => {
   const doc = new FakeDocument();
   const fake = createFakeTransport();
   let pendingDebounce: (() => void) | undefined;
@@ -47,6 +48,7 @@ const mount = (): OverlayHarness => {
     close: () => {
       closeCount += 1;
     },
+    ...(options?.switcher !== undefined ? { switcher: options.switcher } : {}),
   });
   return {
     doc,
@@ -295,5 +297,131 @@ describe('E4 overlay · close & lifecycle', () => {
     expect(fake.countOf('SearchQuery')).toBe(0);
     expect(doc.body.querySelector('[data-surface="overlay"]')).toBeNull();
     expect(doc.body.querySelector('[data-live-region]')).toBeNull();
+  });
+});
+
+describe('E8-T09 overlay · command door + switcher (Spec W8 · C28 · §9 two-doors)', () => {
+  const MISSIONS: readonly SwitcherItemModel[] = [
+    { missionId: 'm-open', name: 'Research sprint', cls: 'open', tabCount: 5, windowId: 7 },
+    { missionId: 'm-parked', name: 'Visa paperwork', cls: 'parked', tabCount: 3, windowId: null },
+  ];
+
+  const mountSwitcher = (
+    script?: OverlayDeps['switcher'],
+  ): { h: OverlayHarness; calls: [string, boolean][] } => {
+    const calls: [string, boolean][] = [];
+    const seam: OverlayDeps['switcher'] = script ?? {
+      list: () => Promise.resolve(MISSIONS),
+      switch: (id, parkCurrent) => {
+        calls.push([id, parkCurrent]);
+        return Promise.resolve();
+      },
+    };
+    return { h: mount({ switcher: seam }), calls };
+  };
+
+  const verbItem = (doc: FakeDocument): FakeElement =>
+    mustQuery(doc.body, '[data-item-id="verb.switch-mission"]');
+
+  it('D1: the ">" prefix shows the switch verb verbatim — and WITHOUT the seam, ">" is ordinary search text', async () => {
+    const { h } = mountSwitcher();
+    fireInput(input(h.doc), '>');
+    await flush();
+    expect(verbItem(h.doc).textContent).toContain('Switch to a mission');
+    expect(h.fake.countOf('SearchQuery')).toBe(0); // door mode never hits the things wire
+    h.unmount();
+    // Absence-by-default: no seam ⇒ the door is shut; '>' behaves as plain text.
+    const plain = mount();
+    fireInput(input(plain.doc), '>x');
+    plain.fireDebounce();
+    await flush();
+    expect(plain.fake.lastOf('SearchQuery').payload).toEqual({ q: '>x', scope: 'all', limit: 20 });
+    expect(plain.doc.body.querySelector('[data-item-id="verb.switch-mission"]')).toBeNull();
+    plain.unmount();
+  });
+
+  it('D2: activating the verb enters W8 — open-first order, honest subs, the Alt modifier hint', async () => {
+    const { h } = mountSwitcher();
+    fireInput(input(h.doc), '>');
+    await flush();
+    verbItem(h.doc).click();
+    await flush();
+    expect(input(h.doc).value).toBe(''); // mode entry clears the door text
+    const openItem = mustQuery(h.doc.body, '[data-item-id="mission.m-open"]');
+    const parkedItem = mustQuery(h.doc.body, '[data-item-id="mission.m-parked"]');
+    const rows = h.doc.body
+      .querySelectorAll('.palette-item')
+      .map((n) => n.getAttribute('data-item-id'));
+    expect(rows.indexOf('mission.m-open')).toBeLessThan(rows.indexOf('mission.m-parked')); // W8 order verbatim
+    expect(openItem.getAttribute('data-group')).toBe('open');
+    expect(parkedItem.getAttribute('data-group')).toBe('parked');
+    expect(mustQuery(h.doc.body, '[data-palette-note]').textContent).toContain(
+      'Alt+Enter parks the current window first',
+    );
+    // Client-side filter within the door:
+    fireInput(input(h.doc), 'visa');
+    await flush();
+    expect(h.doc.body.querySelector('[data-item-id="mission.m-open"]')).toBeNull();
+    expect(mustQuery(h.doc.body, '[data-item-id="mission.m-parked"]').textContent).toContain(
+      'Visa paperwork',
+    );
+    h.unmount();
+  });
+
+  it('D3 · CRITERION: activation without Alt switches only; WITH Alt it is park-current-then-switch (W8 modifier)', async () => {
+    const { h, calls } = mountSwitcher();
+    fireInput(input(h.doc), '>');
+    await flush();
+    verbItem(h.doc).click();
+    await flush();
+    fireKey(input(h.doc), { key: 'enter' }); // first row = open-first head (no modifier)
+    await flush();
+    expect(calls).toEqual([['m-open', false]]);
+    expect(h.closes()).toBe(1); // a plain switch closes the overlay
+    h.unmount();
+    const second = mountSwitcher();
+    fireInput(input(second.h.doc), '>');
+    await flush();
+    verbItem(second.h.doc).click();
+    await flush();
+    fireKey(input(second.h.doc), { key: 'enter', altKey: true }); // W8's "park current, then switch"
+    await flush();
+    expect(second.calls).toEqual([['m-open', true]]);
+    second.h.unmount();
+  });
+
+  it('D4: a torn switch shows clear language and the overlay stays open (W8 failure law)', async () => {
+    const { h } = mountSwitcher({
+      list: () => Promise.resolve(MISSIONS),
+      switch: () => Promise.reject(new Error('park failed: tabs lost')),
+    });
+    fireInput(input(h.doc), '>');
+    await flush();
+    verbItem(h.doc).click();
+    await flush();
+    fireKey(input(h.doc), { key: 'enter' });
+    await flush();
+    expect(h.closes()).toBe(0); // never half-executed, never silently dismissed
+    const alert = mustQuery(h.doc.body, '[role="alert"]'); // clear language block, honest copy
+    expect(alert.textContent).toContain(copyOf('msg.error.output'));
+    h.unmount();
+  });
+
+  it('D5: Escape steps OUT of the switcher before closing (two doors, two depths)', async () => {
+    const { h } = mountSwitcher();
+    fireInput(input(h.doc), '>');
+    await flush();
+    verbItem(h.doc).click();
+    await flush();
+    expect(mustQuery(h.doc.body, '[data-item-id="mission.m-open"]')).not.toBeNull();
+    fireKey(input(h.doc), { key: 'escape' }); // depth 1: leave the switcher, keep the overlay
+    await flush();
+    expect(h.closes()).toBe(0);
+    expect(h.doc.body.querySelector('[data-item-id="mission.m-open"]')).toBeNull();
+    expect(input(h.doc).value).toBe('');
+    fireKey(input(h.doc), { key: 'escape' }); // depth 2: now close
+    await flush();
+    expect(h.closes()).toBe(1);
+    h.unmount();
   });
 });

@@ -13,9 +13,19 @@ export interface PaletteItem {
   readonly group?: string | undefined;
 }
 
+/** Activation modifiers (E8-T09: W8's "park current, then switch" rides Alt —
+ *  the modifier reaches the surface so ONE list serves both gestures). */
+export interface PaletteMods {
+  readonly alt: boolean;
+}
+
+const modsOf = (ev: Event): PaletteMods => ({
+  alt: 'altKey' in ev && (ev as { altKey?: unknown }).altKey === true,
+});
+
 export interface PaletteCallbacks {
   readonly onQuery: (q: string) => void;
-  readonly onActivate: (item: PaletteItem) => void;
+  readonly onActivate: (item: PaletteItem, mods?: PaletteMods | undefined) => void;
   readonly onClose: () => void;
 }
 
@@ -23,6 +33,9 @@ export interface SearchPalette {
   readonly root: HTMLElement;
   readonly focus: () => void;
   readonly query: () => string;
+  /** Programmatic query reset (E8-T09 door transitions; fires NO listener —
+   *  the surface re-renders its mode itself after calling this). */
+  readonly setQuery: (q: string) => void;
   readonly setItems: (items: readonly PaletteItem[]) => void;
   readonly setLoading: (loading: boolean) => void;
   readonly setNote: (text: string | undefined) => void;
@@ -76,7 +89,7 @@ export const createSearchPalette = (doc: Document, cb: PaletteCallbacks): Search
           ...(item.group !== undefined ? { 'data-group': item.group } : {}),
         },
         on: {
-          click: () => cb.onActivate(item),
+          click: (ev) => cb.onActivate(item, modsOf(ev)),
         },
       });
       option.appendChild(el(doc, 'span', { cls: 'palette-item-title', text: item.title }));
@@ -115,7 +128,7 @@ export const createSearchPalette = (doc: Document, cb: PaletteCallbacks): Search
     } else if (key === KEYS.enter) {
       ev.preventDefault();
       const item = items[selected === NO_SELECTION ? 0 : selected];
-      if (item !== undefined) cb.onActivate(item);
+      if (item !== undefined) cb.onActivate(item, modsOf(ev));
     } else if (key === KEYS.escape) {
       ev.preventDefault();
       cb.onClose();
@@ -133,6 +146,9 @@ export const createSearchPalette = (doc: Document, cb: PaletteCallbacks): Search
     root,
     focus: () => input.focus(),
     query: () => input.value,
+    setQuery: (q) => {
+      input.value = q;
+    },
     setItems: (next) => {
       items = next;
       if (items.length === 0) selected = NO_SELECTION;

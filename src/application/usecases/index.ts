@@ -25,6 +25,8 @@ import type { DupesService } from './dupes.js';
 import { createDupesService } from './dupes.js';
 import type { NudgesService } from './nudges.js';
 import { createNudgesService } from './nudges.js';
+import type { SwitcherService } from './switcher.js';
+import { createSwitcherService } from './switcher.js';
 import type { AiJobsService } from './ai-jobs.js';
 import { createAiJobsService } from './ai-jobs.js';
 import type { TabsInternalService } from './tabs-internal.js';
@@ -47,6 +49,7 @@ export type { PrefsService } from './prefs.js';
 export type { DupesService } from './dupes.js';
 export { DUPE_IGNORE_PREFIX } from './dupes.js';
 export type { NudgesService, SprawlNudgeOffer } from './nudges.js';
+export type { SwitchOutcome, SwitcherItem, SwitcherService } from './switcher.js';
 export {
   META_NUDGE_DAY_PREFIX,
   META_NUDGE_DISMISS_PREFIX,
@@ -72,6 +75,8 @@ export interface AppServices {
   readonly dupes: DupesService;
   /** E8-T08 the one-a-day sprawl whisper (§6.10/R15; errs to never). */
   readonly nudges: NudgesService;
+  /** E8-T09 the atomic park+switch (C28; park-fail aborts the whole intent). */
+  readonly switcher: SwitcherService;
   readonly tabs: TabsInternalService;
   /** E8-T01 AI job pipeline service — ABSENT when deps.ai is unwired (hosts
    *  without the AI graph; the ai-lanes probe reports honest grey there). */
@@ -89,12 +94,13 @@ export const createServices = (deps: ServiceDeps): AppServices => {
   });
   const edge = { deps, appender };
   const park = createParkService(edge);
+  const resume = createResumeService(edge);
   return {
     missions: createMissionService(edge),
     trash: createTrashService(edge),
     undo: createUndoService(edge),
     park,
-    resume: createResumeService(edge),
+    resume,
     queries: createQueryService(edge),
     portability: createPortabilityService(edge),
     system: createSystemService(edge),
@@ -111,6 +117,12 @@ export const createServices = (deps: ServiceDeps): AppServices => {
       { parkTab: (input, ctx) => park.parkTab(input, ctx) },
       { offsetMinutes: () => -new Date().getTimezoneOffset() },
     ),
+    // E8-T09: the C28 chain rides the flagship park/resume phases as seams
+    // (single intent, checkpointed cids — composition, never adaptation).
+    switcher: createSwitcherService(edge, {
+      parkWindow: (input, ctx) => park.parkWindow(input, ctx),
+      resumeMission: (input, ctx) => resume.resumeMission(input, ctx),
+    }),
     tabs: createTabsInternalService(edge),
     ...(deps.ai !== undefined ? { aiJobs: createAiJobsService(edge, deps.ai) } : {}),
   };

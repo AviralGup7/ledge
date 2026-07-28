@@ -15,6 +15,8 @@ export {
   sprawlOfferable,
   sprawlStaleTabs,
 } from './policies/sprawl.js';
+export type { SwitcherClass, SwitcherMissionInput } from './policies/switcher.js';
+export { switcherClassOf, switcherOrder } from './policies/switcher.js';
 export type {
   Decision,
   InverseAtom,
