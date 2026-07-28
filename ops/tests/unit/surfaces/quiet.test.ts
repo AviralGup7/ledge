@@ -8,7 +8,14 @@ import { describe, expect, it } from 'vitest';
 import { ok } from '@/shared-kernel/result/index.js';
 import { copyOf } from '@/surfaces/components/copy/copy.js';
 import { mountQuietPage, type Mounted } from '@/surfaces/quiet-page/quiet.js';
-import { FakeDocument, asDocument, fireKey, mustQuery, type FakeElement } from './fake-dom.js';
+import {
+  FakeDocument,
+  asDocument,
+  fireInput,
+  fireKey,
+  mustQuery,
+  type FakeElement,
+} from './fake-dom.js';
 import {
   createFakeTransport,
   createTestEntropy,
@@ -32,6 +39,7 @@ const BOOTSTRAP = {
       namedBy: 'system',
       state: 'archived',
       concluded: true,
+      outcomeNote: 'Chose the coastal route — bookings done.',
       tabCount: 9,
     },
   ],
@@ -310,6 +318,11 @@ describe('E4 quiet · library & detail', () => {
     await answerAll(h);
     await openDetail(h);
     mustQuery(content(h.doc), '[data-action="conclude"]').click();
+    await flush();
+    expect(h.fake.countOf('ConcludeMission')).toBe(0); // E8-T10: the note lane opens first
+    const lane = mustQuery(content(h.doc), '[data-lane="conclude"]');
+    expect(lane.textContent).toContain(copyOf('msg.hint.conclude-note'));
+    mustQuery(lane, '[data-action="conclude-note"]').click();
     await flush();
     expect(h.fake.lastOf('ConcludeMission').payload).toEqual({
       missionId: '01HF7YAT001000000000000000',
@@ -1226,6 +1239,70 @@ describe('E6 quiet · rescue console (probes + timeline + cadence + bundle)', ()
     expect(mustQuery(h.doc.body, '[data-report="scan-full"]').textContent).toContain(
       '01HF8SCANFORCED0000000000',
     );
+    h.unmount();
+  });
+});
+
+describe('E8-T10 quiet · conclude flow + outcome badge (W12)', () => {
+  const DETAIL_W12 = {
+    mission: {
+      missionId: '01HF7YAT001000000000000000',
+      name: 'Reading week',
+      namedBy: 'user',
+      state: 'parked',
+      concluded: false,
+      tabCount: 2,
+    },
+    tabs: [],
+    artifacts: [],
+  };
+  const openDetailW12 = async (h: QuietHarness): Promise<void> => {
+    h.answers.set('GetMissionDetail', DETAIL_W12);
+    await answerAll(h);
+    mustQuery(
+      content(h.doc),
+      '[data-mission-id="01HF7YAT001000000000000000"] [data-action="open-detail"]',
+    ).click();
+    await answerAll(h);
+  };
+
+  it('W12-1 · CRITERION: a typed note rides the SAME ConcludeMission command (no second path)', async () => {
+    const h = mount();
+    await openDetailW12(h);
+    const c = content(h.doc);
+    mustQuery(c, '[data-action="conclude"]').click();
+    await flush();
+    expect(h.fake.countOf('ConcludeMission')).toBe(0); // the lane opens first
+    const lane = mustQuery(c, '[data-lane="conclude"]');
+    fireInput(mustQuery(lane, '[data-input="conclude-note"]'), 'Chose Acme — reasons noted.');
+    mustQuery(lane, '[data-action="conclude-note"]').click();
+    await flush();
+    expect(h.fake.lastOf('ConcludeMission').payload).toEqual({
+      missionId: '01HF7YAT001000000000000000',
+      outcomeNote: 'Chose Acme — reasons noted.',
+    });
+    h.unmount();
+  });
+
+  it('W12-2: cancel closes the lane with NOTHING sent (closure never sneaks)', async () => {
+    const h = mount();
+    await openDetailW12(h);
+    const c = content(h.doc);
+    mustQuery(c, '[data-action="conclude"]').click();
+    await flush();
+    const lane = mustQuery(c, '[data-lane="conclude"]');
+    fireInput(mustQuery(lane, '[data-input="conclude-note"]'), 'half-typed thought');
+    mustQuery(lane, '[data-action="conclude-cancel"]').click();
+    await flush();
+    expect(h.fake.countOf('ConcludeMission')).toBe(0);
+    h.unmount();
+  });
+
+  it('W12-3 · CRITERION: the Archive badge IS the outcome note, verbatim (chip-outcome)', async () => {
+    const h = mount();
+    await navTo(h, 'archive');
+    const badge = mustQuery(content(h.doc), '.chip-outcome');
+    expect(badge.textContent).toContain('Chose the coastal route — bookings done.');
     h.unmount();
   });
 });

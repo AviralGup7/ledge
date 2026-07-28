@@ -44,7 +44,10 @@ const COVENANT_MISSIONS: readonly MissionViewRow[] = [
     name: 'Reading list',
     namedBy: 'user',
     state: 'parked',
-    concluded: false,
+    concluded: true,
+    // E8-T10 (roadmap AC: "export includes notes"): the covenant proves the
+    // outcome note survives as readable text in every renderer.
+    outcomeNote: 'Chose Acme — reasons: price, migration path.',
     tabIds: ['t-01', 't-02'],
     createdAt: GENERATED_AT - 2 * DAY_MS,
     lastActiveAt: GENERATED_AT - 3 * HOUR_MS,

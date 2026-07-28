@@ -29,6 +29,9 @@ export interface ExportMissionModel {
   readonly name: string;
   readonly state: MissionViewRow['state'];
   readonly concluded: boolean;
+  /** E8-T10 (W12 + the export covenant: "Mission export includes summary and
+   *  outcome note as readable text"): verbatim row truth, absent-unless-noted. */
+  readonly outcomeNote?: string | undefined;
   readonly createdAt?: number | undefined;
   readonly lastActiveAt?: number | undefined;
   readonly tabs: readonly ExportTabModel[];
@@ -124,6 +127,9 @@ export const buildModel = (input: BuildModelInput): CanonicalExportModel => {
       name: m.name,
       state: m.state,
       concluded: m.concluded,
+      ...(m.outcomeNote !== undefined && m.outcomeNote.length > 0
+        ? { outcomeNote: m.outcomeNote }
+        : {}),
       ...(m.createdAt !== undefined ? { createdAt: m.createdAt } : {}),
       ...(m.lastActiveAt !== undefined ? { lastActiveAt: m.lastActiveAt } : {}),
       tabs: tabsOut,

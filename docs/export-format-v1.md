@@ -60,15 +60,16 @@ only this model, so §2's laws hold identically across §4–§6.
 
 ### 2.2 Mission objects
 
-| Field          | Type                               | Law                                             |
-| -------------- | ---------------------------------- | ----------------------------------------------- |
-| `missionId`    | string                             | The truth id.                                   |
-| `name`         | string                             | May be empty (unnamed missions are lawful).     |
-| `state`        | `"live" \| "parked" \| "archived"` | Trashed missions are never exported.            |
-| `concluded`    | boolean                            |                                                 |
-| `createdAt`    | epoch ms, optional                 | **Absent, never null**, when absent from truth. |
-| `lastActiveAt` | epoch ms, optional                 | Absent, never null.                             |
-| `tabs`         | tab objects (§2.3)                 | The mission's declaration order is preserved.   |
+| Field          | Type                               | Law                                                                                                               |
+| -------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `missionId`    | string                             | The truth id.                                                                                                     |
+| `name`         | string                             | May be empty (unnamed missions are lawful).                                                                       |
+| `state`        | `"live" \| "parked" \| "archived"` | Trashed missions are never exported.                                                                              |
+| `concluded`    | boolean                            |                                                                                                                   |
+| `outcomeNote`  | string, optional                   | E8-T10 (W12): the user-authored outcome note, verbatim. **Absent, never null**, when the conclude rode note-less. |
+| `createdAt`    | epoch ms, optional                 | **Absent, never null**, when absent from truth.                                                                   |
+| `lastActiveAt` | epoch ms, optional                 | Absent, never null.                                                                                               |
+| `tabs`         | tab objects (§2.3)                 | The mission's declaration order is preserved.                                                                     |
 
 ### 2.3 Tab objects
 
@@ -187,7 +188,8 @@ contract — readers parse by name (§8).
       "missionId": "m-alpha",
       "name": "Reading list",
       "state": "parked",
-      "concluded": false,
+      "concluded": true,
+      "outcomeNote": "Chose Acme — reasons: price, migration path.",
       "createdAt": 1784851200000,
       "lastActiveAt": 1785013200000,
       "tabs": [
@@ -249,8 +251,8 @@ contract — readers parse by name (§8).
       },
       {
         "partId": "mission:m-alpha",
-        "checksum": "3eddb279",
-        "bytes": 815
+        "checksum": "c003299c",
+        "bytes": 885
       },
       {
         "partId": "mission:m-beta",
@@ -269,8 +271,8 @@ contract — readers parse by name (§8).
       }
     ],
     "partCount": 5,
-    "totalBytes": 1771,
-    "manifestChecksum": "ffb25ace"
+    "totalBytes": 1841,
+    "manifestChecksum": "ba8d1d01"
   }
 }
 
@@ -314,6 +316,7 @@ body{font-family:ui-sans-serif,system-ui,sans-serif;max-width:52rem;margin:2rem 
 h1{font-size:1.4rem}h2{font-size:1.1rem;margin-top:2rem;border-bottom:1px solid #ddd;padding-bottom:.2rem}
 ol{padding-left:1.4rem}li{margin:.25rem 0}a{color:#0645ad;text-decoration:none}a:hover{text-decoration:underline}
 .meta{color:#666;font-size:.85rem}.count{color:#666;font-weight:400}
+.outcome{margin:.4rem 0;padding:.4rem .7rem;border-left:3px solid #ddd;color:#333}
 </style>
 </head>
 <body>
@@ -321,6 +324,7 @@ ol{padding-left:1.4rem}li{margin:.25rem 0}a{color:#0645ad;text-decoration:none}a
 <p class="meta">format ledge-export v1 · build a94f3c21807bc6d5 · canonRulesV 1 · generated 2026-07-26T00:00:00.000Z</p>
 <section>
 <h2>Reading list <span class="count">(2)</span></h2>
+<p class="outcome"><strong>Outcome:</strong> Chose Acme — reasons: price, migration path.</p>
 <ol>
 <li><a href="https://example.com/articles/tab-suspension">The case for tab suspension</a> <span class="meta">example.com</span></li>
 <li><a href="https://example.org/papers/event-sourcing">Event sourcing field notes</a> <span class="meta">example.org</span></li>
@@ -372,6 +376,8 @@ A single CommonMark-friendly notes document:
 
 ## Reading list (2)
 
+**Outcome:** Chose Acme — reasons: price, migration path.
+
 - [The case for tab suspension](https://example.com/articles/tab-suspension)
 - [Event sourcing field notes](https://example.org/papers/event-sourcing)
 
@@ -404,11 +410,11 @@ For the §4 example these lines are (and the unit lane requires them to be):
 <!-- prettier-ignore -->
 ```text
 head:990b0dc1
-mission:m-alpha:3eddb279
+mission:m-alpha:c003299c
 mission:m-beta:937d1558
 loose:0:78fe8913
 tail:e4ae51f6
-manifestChecksum: ffb25ace
+manifestChecksum: ba8d1d01
 ```
 
 The final line equals the `manifestChecksum` embedded in the §4 example's manifest — and the

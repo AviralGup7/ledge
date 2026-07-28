@@ -21,6 +21,9 @@ export interface MissionView {
   readonly namedBy: string;
   readonly state: MissionState;
   readonly concluded: boolean;
+  /** E8-T10 (W12): the outcome note, verbatim from the row (absent unless a
+   *  noted conclude landed — surfaces render it as the Archive badge). */
+  readonly outcomeNote?: string | undefined;
   readonly createdAt: number;
   readonly lastActiveAt: number;
   /** Denormalized at map time (count of the current membership). */
@@ -180,6 +183,9 @@ export const missionViewOf = (
     namedBy: str(r['namedBy'], 'system'),
     state: (KNOWN_STATES.includes(stateRaw) ? stateRaw : 'live') as MissionState,
     concluded: r['concluded'] === true,
+    ...(typeof r['outcomeNote'] === 'string' && (r['outcomeNote'] as string).length > 0
+      ? { outcomeNote: r['outcomeNote'] as string }
+      : {}),
     createdAt: num(r['createdAt']),
     lastActiveAt: num(r['lastActiveAt']),
     tabCount: Array.isArray(tabIds) ? tabIds.length : 0,

@@ -264,4 +264,43 @@ describe('missions view growth — lifecycle stamps', () => {
     expect(tab?.['state']).toBe('live');
     await h.engine.close();
   });
+
+  it('E8-T10 · MissionConcluded persists the outcome note (W12 memory material; note-less re-conclude preserves)', async () => {
+    const h = await makeProjections();
+    await seedJournal(h, [
+      ev(1, 'MissionFormed', {
+        missionId: missionId(1),
+        name: 'one',
+        namedBy: 'user',
+        tabIds: [],
+      }),
+    ]);
+    await h.projections.applyFromJournal(DEV_A);
+    // Noted conclude: the note lands WITH the flag in the same patch.
+    await seedJournal(h, [
+      ev(2, 'MissionConcluded', { missionId: missionId(1), outcomeNote: 'chose Acme' }),
+      ev(3, 'MissionArchived', { missionId: missionId(1) }),
+    ]);
+    await h.projections.applyFromJournal(DEV_A);
+    let mission = await rowOf(h, 'missions', missionId(1));
+    expect(mission?.['concluded']).toBe(true);
+    expect(mission?.['outcomeNote']).toBe('chose Acme');
+    // Note-LESS re-conclude: no note key ⇒ the prior note survives (a
+    // re-conclude is not a wipe; correction always arrives WITH a note).
+    await seedJournal(h, [ev(4, 'MissionConcluded', { missionId: missionId(1) })]);
+    await h.projections.applyFromJournal(DEV_A);
+    mission = await rowOf(h, 'missions', missionId(1));
+    expect(mission?.['outcomeNote']).toBe('chose Acme');
+    // Corrected conclude: a NEW note replaces, verbatim.
+    await seedJournal(h, [
+      ev(5, 'MissionConcluded', {
+        missionId: missionId(1),
+        outcomeNote: 'chose Acme — reasons noted',
+      }),
+    ]);
+    await h.projections.applyFromJournal(DEV_A);
+    mission = await rowOf(h, 'missions', missionId(1));
+    expect(mission?.['outcomeNote']).toBe('chose Acme — reasons noted');
+    await h.engine.close();
+  });
 });

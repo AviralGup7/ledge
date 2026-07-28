@@ -137,6 +137,11 @@ const missionModelOf = (
     namedBy: asString(raw['namedBy'], 'system'),
     state: asString(raw['state'], 'live'),
     concluded: raw['concluded'] === true,
+    // E8-T10 (W12): concluded cards carry the outcome badge on every surface
+    // that renders them (the guardian's archive-facing cards included).
+    ...(asString(raw['outcomeNote']).length > 0
+      ? { outcomeNote: asString(raw['outcomeNote']) }
+      : {}),
     ...(typeof raw['lastActiveAt'] === 'number' ? { lastActiveAt: raw['lastActiveAt'] } : {}),
     tabCount: Array.isArray(raw['tabIds']) ? raw['tabIds'].length : asNumber(raw['tabCount'], 0),
     favorite: settings[`favorite.mission.${missionId}`] === true,

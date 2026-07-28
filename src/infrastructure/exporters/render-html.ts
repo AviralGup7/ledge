@@ -23,6 +23,7 @@ const STYLE = [
   'h1{font-size:1.4rem}h2{font-size:1.1rem;margin-top:2rem;border-bottom:1px solid #ddd;padding-bottom:.2rem}',
   'ol{padding-left:1.4rem}li{margin:.25rem 0}a{color:#0645ad;text-decoration:none}a:hover{text-decoration:underline}',
   '.meta{color:#666;font-size:.85rem}.count{color:#666;font-weight:400}',
+  '.outcome{margin:.4rem 0;padding:.4rem .7rem;border-left:3px solid #ddd;color:#333}',
 ].join('\n');
 
 const headText = (model: CanonicalExportModel): string => {
@@ -44,10 +45,17 @@ const missionText = (mission: CanonicalExportModel['missions'][number]): string 
         `<li><a href="${escapeHtml(t.url)}">${escapeHtml(t.title.length > 0 ? t.title : t.url)}</a> <span class="meta">${escapeHtml(t.domain)}</span></li>`,
     )
     .join('\n');
+  // E8-T10 (W12 readable-text law): the outcome note is a marked paragraph —
+  // escaped text, absent unless the row carried one.
+  const note = mission.outcomeNote;
+  const noteText =
+    note !== undefined && note.length > 0
+      ? `<p class="outcome"><strong>Outcome:</strong> ${escapeHtml(note)}</p>\n`
+      : '';
   return (
     `<section>\n<h2>${escapeHtml(mission.name)} ` +
     `<span class="count">(${String(mission.tabs.length)})</span></h2>\n` +
-    `<ol>\n${items}\n</ol>\n</section>\n`
+    `${noteText}<ol>\n${items}\n</ol>\n</section>\n`
   );
 };
 

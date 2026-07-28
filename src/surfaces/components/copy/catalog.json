@@ -129,7 +129,8 @@
       "rescue": "A place to check the archive's health and repair views.",
       "topics": "Correct a topic and Ledge learns from it.",
       "history": "What changed, latest first.",
-      "switch-modifier": "Alt+Enter parks the current window first"
+      "switch-modifier": "Alt+Enter parks the current window first",
+      "conclude-note": "What came out of it? Notes here help your future self."
     },
     "note": {
       "fallback": "Keyword results while deeper search warms up.",
@@ -154,7 +155,8 @@
       "brief": "Resumption brief",
       "dupes": "Duplicate tabs",
       "nudge": "Daily suggestion",
-      "switch": "Switch missions"
+      "switch": "Switch missions",
+      "conclude-note": "Outcome note"
     },
     "section": {
       "library": "Library",

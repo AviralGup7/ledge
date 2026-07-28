@@ -12,6 +12,9 @@ export interface MissionCardModel {
   readonly namedBy: string;
   readonly state: string;
   readonly concluded: boolean;
+  /** E8-T10 (W12): the user-authored outcome note — the Archive badge rides
+   *  it verbatim (concluded missions only; absent-unless-noted). */
+  readonly outcomeNote?: string | undefined;
   readonly createdAt?: number | undefined;
   readonly lastActiveAt?: number | undefined;
   readonly tabCount: number;
@@ -58,6 +61,12 @@ export const renderMissionCard = (
   if (mission.concluded)
     chips.appendChild(
       el(doc, 'span', { cls: 'chip chip-concluded', text: copyOf('msg.state.concluded') }),
+    );
+  if (mission.outcomeNote !== undefined && mission.outcomeNote.length > 0)
+    chips.appendChild(
+      // E8-T10: the badge IS the note, verbatim — memory jogs where it was
+      // hardest to earn (no copy key: this is user-authored data, not copy).
+      el(doc, 'span', { cls: 'chip chip-outcome', text: mission.outcomeNote }),
     );
   if (mission.pinned === true)
     chips.appendChild(el(doc, 'span', { cls: 'chip chip-pinned', text: copyOf('msg.action.pin') }));

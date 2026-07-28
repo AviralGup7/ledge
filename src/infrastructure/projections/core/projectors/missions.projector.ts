@@ -161,7 +161,22 @@ export const missionsProjector: ProjectorDef = {
       }
       case 'MissionConcluded': {
         const missionId = str(p['missionId']);
-        return [{ kind: 'patch', key: missionId, fields: { concluded: true, lastActiveAt: wall } }];
+        // E8-T10 (W12): the outcome note is memory material — persist it with
+        // the flag. A note-less re-conclude carries NO note key, so a prior
+        // note survives (correction = conclude again WITH a note, never a
+        // silent wipe).
+        const note = typeof p['outcomeNote'] === 'string' ? p['outcomeNote'].trim() : '';
+        return [
+          {
+            kind: 'patch',
+            key: missionId,
+            fields: {
+              concluded: true,
+              lastActiveAt: wall,
+              ...(note.length > 0 ? { outcomeNote: note } : {}),
+            },
+          },
+        ];
       }
       case 'EntityTrashed': {
         if (str(p['kind']) !== 'mission') return [];

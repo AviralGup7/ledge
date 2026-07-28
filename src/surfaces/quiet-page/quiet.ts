@@ -473,6 +473,9 @@ export const mountQuietPage = (doc: Document, deps: QuietDeps): Mounted => {
       namedBy: asString(raw['namedBy'], 'system'),
       state: asString(raw['state'], 'live'),
       concluded: raw['concluded'] === true,
+      ...(asString(raw['outcomeNote']).length > 0
+        ? { outcomeNote: asString(raw['outcomeNote']) }
+        : {}),
       ...(typeof raw['lastActiveAt'] === 'number' ? { lastActiveAt: raw['lastActiveAt'] } : {}),
       tabCount: Array.isArray(raw['tabIds']) ? raw['tabIds'].length : asNumber(raw['tabCount']),
       favorite: settings[`favorite.mission.${missionId}`] === true,
@@ -499,6 +502,57 @@ export const mountQuietPage = (doc: Document, deps: QuietDeps): Mounted => {
     lane.appendChild(
       actionButton(doc2, { copyKey: 'msg.action.cancel', action: 'cancel', onClick: onCancel }),
     );
+    return lane;
+  };
+
+  // E8-T10 · W12: the conclude lane — optional outcome note (user-authored,
+  // verbatim), one confirm, one cancel. No modal: the lane IS the detail
+  // surface's content while the gesture is open (house confirm idiom).
+  const concludeLane = (doc2: Document, missionId: string): HTMLElement => {
+    const lane = el(doc2, 'div', { cls: 'conclude-lane', attrs: { 'data-lane': 'conclude' } });
+    lane.appendChild(el(doc2, 'p', { cls: 'state-line', text: copyOf('msg.hint.conclude-note') }));
+    const note = el(doc2, 'textarea', {
+      cls: 'conclude-note-input',
+      attrs: {
+        'data-input': 'conclude-note',
+        rows: '3',
+        maxlength: '2000',
+        'aria-label': copyOf('msg.aria.conclude-note'),
+        placeholder: copyOf('msg.hint.conclude-note'),
+      },
+    }) as HTMLTextAreaElement;
+    lane.appendChild(note);
+    const row = el(doc2, 'div', { cls: 'conclude-lane-actions' });
+    row.appendChild(
+      actionButton(doc2, {
+        copyKey: 'msg.action.conclude',
+        action: 'conclude-note',
+        primary: true,
+        onClick: () => {
+          const value = note.value.trim();
+          runCommand(
+            'ConcludeMission',
+            {
+              missionId,
+              ...(value.length > 0 ? { outcomeNote: value } : {}),
+            },
+            () => {
+              renderSection('library');
+            },
+          );
+        },
+      }),
+    );
+    row.appendChild(
+      actionButton(doc2, {
+        copyKey: 'msg.action.cancel',
+        action: 'conclude-cancel',
+        onClick: () => {
+          renderSection('library');
+        },
+      }),
+    );
+    lane.appendChild(row);
     return lane;
   };
 
@@ -550,9 +604,11 @@ export const mountQuietPage = (doc: Document, deps: QuietDeps): Mounted => {
           copyKey: 'msg.action.conclude',
           action: 'conclude',
           onClick: () => {
-            runCommand('ConcludeMission', { missionId: missionModel.missionId }, () => {
-              renderSection('library');
-            });
+            // E8-T10 · W12: conclude opens the note lane — the closure gesture
+            // carries the optional outcome note INTO the same command (never a
+            // second wire name; a blank note rides note-less, per the domain).
+            clearChildren(content);
+            content.appendChild(concludeLane(doc, missionModel.missionId));
           },
         }),
       );

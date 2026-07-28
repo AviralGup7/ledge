@@ -21,10 +21,16 @@ const escapeMdUrl = (raw: string): string =>
 const tabLine = (t: ExportTabModel): string =>
   `- [${escapeMdText(t.title.length > 0 ? t.title : t.url)}](${escapeMdUrl(t.url)})`;
 
-const missionText = (mission: CanonicalExportModel['missions'][number]): string =>
-  `## ${escapeMdText(mission.name)} (${String(mission.tabs.length)})\n\n${mission.tabs
+const missionText = (mission: CanonicalExportModel['missions'][number]): string => {
+  // E8-T10 (W12 readable-text law): the outcome note renders as a notes-style
+  // annotation — one escaped paragraph, absent unless the row carried one.
+  const note = mission.outcomeNote;
+  const noteText =
+    note !== undefined && note.length > 0 ? `**Outcome:** ${escapeMdText(note)}\n\n` : '';
+  return `## ${escapeMdText(mission.name)} (${String(mission.tabs.length)})\n\n${noteText}${mission.tabs
     .map(tabLine)
     .join('\n')}\n\n`;
+};
 
 const headText = (model: CanonicalExportModel): string => {
   const generated = new Date(model.generatedAt).toISOString();

@@ -16,6 +16,10 @@ export type MissionViewRow = {
   readonly namedBy: string;
   readonly state: 'live' | 'parked' | 'archived' | 'trash';
   readonly concluded: boolean;
+  /** E8-T10 (W12): the user-authored outcome note — "richest retrieval
+   *  material in the archive" (§spec). Absent until a noted conclude;
+   *  a note-less re-conclude preserves the prior note (no silent deletion). */
+  readonly outcomeNote?: string | undefined;
   readonly tabIds: readonly string[];
   readonly createdAt: number;
   readonly lastActiveAt: number;
