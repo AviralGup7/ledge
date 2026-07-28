@@ -5,7 +5,8 @@
 // rejoin; wake ⇒ snapshot re-read (MV3 reconnect); unmount detaches everything.
 import { describe, expect, it } from 'vitest';
 import { copyOf } from '@/surfaces/components/copy/copy.js';
-import { mountGuardian, type Mounted } from '@/surfaces/guardian/guardian.js';
+import { mountGuardian, type GuardianDeps, type Mounted } from '@/surfaces/guardian/guardian.js';
+import type { PendingBrief } from '@/surfaces/components/widgets/brief-card.js';
 import { CONTRACT_V } from '@/application/contracts/index.js';
 import { FakeDocument, asDocument, fireKey, mustQuery, type FakeElement } from './fake-dom.js';
 import {
@@ -86,6 +87,7 @@ interface GuardianHarness {
 
 const mount = (options?: {
   readonly ackResponder?: (env: SentEnvelope) => unknown;
+  readonly briefs?: GuardianDeps['briefs'];
 }): GuardianHarness => {
   const doc = new FakeDocument();
   const fake = createFakeTransport();
@@ -95,6 +97,7 @@ const mount = (options?: {
   const mounted = mountGuardian(asDocument(doc), {
     transport: fake.transport,
     entropy: createTestEntropy(),
+    ...(options?.briefs !== undefined ? { briefs: options.briefs } : {}),
     onWake: (listener) => {
       wakeListener = listener;
       return () => {
@@ -559,5 +562,119 @@ describe('E4 guardian · reconnect & lifecycle', () => {
     fake.emitStream('HeartbeatUpdate', { keptCount: 99 }); // streams detached
     await flush();
     expect(doc.body.textContent).not.toContain(copyOf('msg.heartbeat.safe', { count: 99 }));
+  });
+});
+
+describe('E8-T05 guardian · resumption briefs (Spec §6.9 · W5)', () => {
+  const BRIEF: PendingBrief = {
+    missionId: '01HF7YAT001000000000000000',
+    missionName: 'Reading week',
+    text: 'You left Reading week with 3 tabs across 2 domains. You stopped at Standup notes.',
+    presentation: 'normal',
+  };
+  const SUGGESTED_BRIEF: PendingBrief = { ...BRIEF, presentation: 'suggested' };
+
+  const cards = (doc: FakeDocument): readonly FakeElement[] =>
+    section(doc, 'briefs').querySelectorAll('[data-widget="brief-card"]');
+
+  it('W5-1: a gated brief renders ONE card at the window top, verbatim, with calm actions', async () => {
+    const { doc, fake, unmount } = mount({ briefs: { pending: () => Promise.resolve([BRIEF]) } });
+    await settleBoot(fake);
+    await flush();
+    const briefs = section(doc, 'briefs');
+    expect(cards(doc)).toHaveLength(1);
+    expect(briefs.textContent).toContain(BRIEF.text); // artifact truth, verbatim
+    expect(briefs.textContent).toContain(copyOf('msg.brief.heading'));
+    expect(briefs.querySelector('[data-action="resume-brief"]')).not.toBeNull();
+    expect(briefs.querySelector('[data-action="dismiss-brief"]')).not.toBeNull();
+    // Window top of the resumption area: the brief slot precedes the missions.
+    const sections = doc.body
+      .querySelectorAll('[data-section]')
+      .map((n) => n.getAttribute('data-section'));
+    expect(sections.indexOf('briefs')).toBeLessThan(sections.indexOf('missions'));
+    unmount();
+  });
+
+  it('W5-2: resume rides the SAME ResumeMission command as the mission card (no second path)', async () => {
+    const { doc, fake, unmount } = mount({
+      briefs: { pending: () => Promise.resolve([BRIEF]) },
+    });
+    await settleBoot(fake);
+    await flush();
+    mustQuery(section(doc, 'briefs'), '[data-action="resume-brief"]').click();
+    await flush();
+    const sent = fake.lastOf('ResumeMission');
+    expect(sent.kind).toBe('command');
+    expect(sent.payload).toEqual({ missionId: BRIEF.missionId, mode: 'full' });
+    unmount();
+  });
+
+  it('W5-3: dismiss is per-mission-forever within the mount — later seeds never resurface it', async () => {
+    const dismissed: string[] = [];
+    const { doc, fake, wake, unmount } = mount({
+      briefs: {
+        pending: () => Promise.resolve([BRIEF]),
+        onDismiss: (missionId) => dismissed.push(missionId),
+      },
+    });
+    await settleBoot(fake);
+    await flush();
+    mustQuery(section(doc, 'briefs'), '[data-action="dismiss-brief"]').click();
+    await flush();
+    expect(dismissed).toEqual([BRIEF.missionId]);
+    expect(cards(doc)).toHaveLength(0);
+    // A wake re-seeds the store (the brief is still "pending" upstream)…
+    wake();
+    await settleBoot(fake);
+    await flush();
+    expect(cards(doc)).toHaveLength(0); // …yet dismissal outranks every later seed
+    unmount();
+  });
+
+  it('W5-4: shown-once is sticky — a later seed neither duplicates nor erases the card', async () => {
+    const { doc, fake, wake, unmount } = mount({
+      briefs: { pending: () => Promise.resolve([BRIEF]) },
+    });
+    await settleBoot(fake);
+    await flush();
+    expect(cards(doc)).toHaveLength(1);
+    wake();
+    await settleBoot(fake);
+    await flush();
+    expect(cards(doc)).toHaveLength(1); // exactly one, the SAME truth
+    unmount();
+  });
+
+  it('W5-5: §6.11 affordance — the medium tier wears the suggested chip (word, never number)', async () => {
+    const { doc, fake, unmount } = mount({
+      briefs: { pending: () => Promise.resolve([SUGGESTED_BRIEF]) },
+    });
+    await settleBoot(fake);
+    await flush();
+    const card = cards(doc)[0];
+    expect(card?.getAttribute('data-presentation')).toBe('suggested');
+    expect(card?.querySelector('.chip-suggested')?.textContent).toContain(
+      copyOf('msg.brief.suggested'),
+    );
+    unmount();
+  });
+
+  it('W5-6: absence-by-default — no seam renders nothing; a seam fault renders nothing new', async () => {
+    const plain = mount();
+    await settleBoot(plain.fake);
+    await flush();
+    expect(cards(plain.doc)).toHaveLength(0);
+    plain.unmount();
+    const faulty = mount({
+      briefs: {
+        pending: () => Promise.reject(new Error('wire down')),
+        onDismiss: () => undefined,
+      },
+    });
+    await settleBoot(faulty.fake);
+    await flush();
+    expect(cards(faulty.doc)).toHaveLength(0); // calm degrade, no banner
+    expect(faulty.doc.body.querySelector('[role="alert"]')).toBeNull();
+    faulty.unmount();
   });
 });

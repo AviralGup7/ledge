@@ -23,8 +23,10 @@ const fixtures = (
 ).fixtures;
 
 describe('E1-T07 registry completeness (EES §4 table)', () => {
-  it('declares exactly the 31 concrete v1 types of the locked event table', () => {
-    expect(Object.keys(EVENT_REGISTRY)).toHaveLength(31);
+  it('declares exactly the 32 concrete v1 types (31 locked + the E8-T05 appended row)', () => {
+    // E8-T05 (A-09 append-only amendment, docs/adr-notes/e8-resumption-briefs.md
+    // J4): BriefDismissed — the §6.9/W5 "don't show again" preference event.
+    expect(Object.keys(EVENT_REGISTRY)).toHaveLength(32);
   });
 
   it('every row is schemaV:1 with producer, consumers and a field table', () => {

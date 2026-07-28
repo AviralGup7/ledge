@@ -7,12 +7,12 @@ provision, not a promise. ADR-018's laws apply to every row: provider failure �
 circuit-break + next rung; malformed output ⇒ reject + count, never shipped;
 cloud depth-mode is opt-in with per-day budgets and the redaction gateway.
 
-| rung | provider id  | class                                        | availability                                          | breaker                                  | status                                                                              | witness                                                                                                           |
-| ---- | ------------ | -------------------------------------------- | ----------------------------------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| 3    | `clouddepth` | cloud depth-mode                             | opt-in, budgeted/day                                  | opens at 3 strikes                       | **provision** — dir is a `.gitkeep` shell                                           | E8 milestone rows (T04+)                                                                                          |
-| 2    | `builtin`    | Chrome built-in AI                           | capability-detected                                   | opens at 3 strikes                       | **provision** — dir is a `.gitkeep` shell                                           | E8-T06 (absence = invisible degrade)                                                                              |
-| 2    | `ondevice`   | `ondevice-fwd-v1` WASM model in the workroom | capability-detected (deferred rung, yield-on-absence) | opens at 3 strikes — yields never strike | **shipped** (E8-T03; E8-T04 adds the `mission-summary` capability — same rung/cell) | M1–M4/N1–N5/L1 · S1–S5/L1 summaries · `check:ondevice-model` · `check:shadow-eval` (margin 0.953 ≥ 0.50; G10/G11) |
-| 1    | `heuristic`  | `heuristic-domain-time-v1`                   | always (offline, free)                                | **never breaks**                         | **shipped** (E8-T04: also the §6.3 fail-down summary form, units H1–H5)             | unit/property/chaos suites + S5 forced-rung law                                                                   |
+| rung | provider id  | class                                        | availability                                          | breaker                                  | status                                                                                                                           | witness                                                                                                                                    |
+| ---- | ------------ | -------------------------------------------- | ----------------------------------------------------- | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| 3    | `clouddepth` | cloud depth-mode                             | opt-in, budgeted/day                                  | opens at 3 strikes                       | **provision** — dir is a `.gitkeep` shell                                                                                        | E8 milestone rows (T04+)                                                                                                                   |
+| 2    | `builtin`    | Chrome built-in AI                           | capability-detected                                   | opens at 3 strikes                       | **provision** — dir is a `.gitkeep` shell                                                                                        | E8-T06 (absence = invisible degrade)                                                                                                       |
+| 2    | `ondevice`   | `ondevice-fwd-v1` WASM model in the workroom | capability-detected (deferred rung, yield-on-absence) | opens at 3 strikes — yields never strike | **shipped** (E8-T03; E8-T04 adds `mission-summary`; E8-T05 adds `mission-brief` — same rung/cell, absence-preference terminal)   | M1–M4/N1–N5/L1 · S1–S5/L1 summaries · A1–A6/B1–B6 briefs · `check:ondevice-model` · `check:shadow-eval` (margin 0.953 ≥ 0.50; G10/G11/G12) |
+| 1    | `heuristic`  | `heuristic-domain-time-v1`                   | always (offline, free)                                | **never breaks**                         | **shipped** (E8-T04: also the §6.3 fail-down summary form, units H1–H5; **no `mission-brief` capability by design — E8-T05 J2**) | unit/property/chaos suites + S5 forced-rung law                                                                                            |
 
 ## Constants (versioned with the matrix)
 
@@ -31,6 +31,11 @@ cloud depth-mode is opt-in with per-day budgets and the redaction gateway.
   margin `0.12`, sharp bar `0.90`, mission-grade logit `≥ 1.0` (chaff register
   may name its whole story, never half a dual); stamps
   `{0.88, 0.85, 0.72, 0.64}` — vocabulary pinned by shadow-eval G6.
+- Absence-preference (E8-T05, ADR-note J1/J2): `mission-brief` attempts end
+  **done-and-silent** on rung-less or pure-yield outcomes — terminal, no
+  artifact, never counted (the `silentDone` census is the probe-visible
+  evidence). Brief budgets: card ≤ 420 chars, producer hints ≤ 200 chars each;
+  two-sentence floor (state alone is not a brief, J7).
 
 ## Reject + count (Spec §6.1 / EES §2.12)
 

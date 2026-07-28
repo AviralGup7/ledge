@@ -14,6 +14,7 @@ import type {
   WorkroomPair,
   WorkroomWireDeps,
 } from '@/application/ports/ai-jobs.port.js';
+import { isAbsencePreferredKind } from '@/application/ports/ai-jobs.port.js';
 import type { AiLadder } from './ladder.js';
 
 export type { AiWorkerHost, ExecuteOutcome, WorkroomPair, WorkroomWireDeps };
@@ -30,8 +31,16 @@ export function createSwLocalWorkerHost(deps: { readonly ladder: AiLadder }): Ai
         now,
         forceHeuristic: job.forceHeuristic === true,
       });
-      if (rungs.length === 0) return { kind: 'no-rung' };
+      if (rungs.length === 0) {
+        // E8-T05 (Spec §6.9): for absence-preferred kinds, "no rung covers this
+        // kind" (capability-absent on-device, and briefs have NO heuristic
+        // rung by design) is a lawful silence — never a provider failure.
+        if (isAbsencePreferredKind(job.kind)) return { kind: 'silent' };
+        return { kind: 'no-rung' };
+      }
       let lastProviderId = rungs[rungs.length - 1]?.providerId ?? 'unknown';
+      let anyYield = false;
+      let anyStrike = false;
       for (const rung of rungs) {
         lastProviderId = rung.providerId;
         const ran = await rung.run({
@@ -47,8 +56,18 @@ export function createSwLocalWorkerHost(deps: { readonly ladder: AiLadder }): Ai
         // YIELD law (E8-T03): a typed no-confidence yield is NOT a strike — thin
         // evidence is an absence, not a fault; the next rung runs unconditionally.
         if (ran.error.details?.['yield'] !== true) {
+          anyStrike = true;
           deps.ladder.noteFailure({ providerId: rung.providerId, now });
+        } else {
+          anyYield = true;
         }
+      }
+      // E8-T05 absence law: an exhaustion of pure yields (zero strikes) on an
+      // absence-preferred kind is SILENT — absence preferred to a heuristic
+      // the kind deliberately does not have (§6.9). A single strike keeps the
+      // provider-error release/retry ladder for all kinds.
+      if (!anyStrike && anyYield && isAbsencePreferredKind(job.kind)) {
+        return { kind: 'silent' };
       }
       return { kind: 'provider-error', providerId: lastProviderId };
     },
@@ -165,17 +184,27 @@ export function createWorkroomHostPair(deps: WorkroomWireDeps): WorkroomPair {
           const waiter = jobWaiters.get(jobId);
           if (waiter === undefined) return true; // abandoned/stale — tolerated by law
           jobWaiters.delete(jobId);
-          waiter(
-            message.payload['ok'] === true
-              ? { kind: 'artifact', candidate: message.payload['artifact'], providerId: 'workroom' }
-              : {
-                  kind: 'provider-error',
-                  providerId:
-                    typeof message.payload['failureClass'] === 'string'
-                      ? message.payload['failureClass']
-                      : 'workroom',
-                },
-          );
+          if (message.payload['ok'] === true) {
+            waiter({
+              kind: 'artifact',
+              candidate: message.payload['artifact'],
+              providerId: 'workroom',
+            });
+          } else {
+            // E8-T05: the workroom executor answers failureClass 'silent' when
+            // the kind's absence law says so; the outcome is re-verified by the
+            // service classifier (a stray class on a non-preferred kind never
+            // invents a silence).
+            const failureClass = message.payload['failureClass'];
+            if (failureClass === 'silent') {
+              waiter({ kind: 'silent' });
+            } else {
+              waiter({
+                kind: 'provider-error',
+                providerId: typeof failureClass === 'string' ? failureClass : 'workroom',
+              });
+            }
+          }
           return true;
         }
         case 'WorkroomShutdown':

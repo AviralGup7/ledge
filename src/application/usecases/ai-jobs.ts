@@ -27,13 +27,15 @@ import type {
   AiServiceStats,
   AiWorkerHost,
   ExecuteOutcome,
+  MissionBriefInput,
   MissionNameInput,
   MissionSummaryInput,
 } from '@/application/ports/ai-jobs.port.js';
+import { isAbsencePreferredKind } from '@/application/ports/ai-jobs.port.js';
 import { err, ok, type LedgeError, type Result } from '@/shared-kernel/result/index.js';
 import type { AiJobsServiceDeps, ServiceEdge, UseCtx } from './shared/app-ctx.js';
 
-export type { AiServiceStats, MissionNameInput, MissionSummaryInput };
+export type { AiServiceStats, MissionBriefInput, MissionNameInput, MissionSummaryInput };
 export type { AiJobScheduler, AiLaneWindowPort } from './shared/app-ctx.js';
 
 /** Time-boxed execution budgets per lane (MV3 citizen law §10). Interactive's
@@ -69,6 +71,15 @@ export interface AiEnqueueMissionSummaryInput {
   readonly input: MissionSummaryInput;
 }
 
+/** E8-T05 (Spec §6.9 · W5): resumption briefs ride the identical law. The kind
+ *  is absence-preferred — a thin-evidence attempt ends done-and-silent, never
+ *  failed (the classifier's silence mapping keys on the port's vocabulary). */
+export interface AiEnqueueMissionBriefInput {
+  readonly subjectId: string;
+  readonly lane: AiLane;
+  readonly input: MissionBriefInput;
+}
+
 export type AiPumpDisposition =
   | { readonly kind: 'idle' }
   | {
@@ -78,6 +89,14 @@ export type AiPumpDisposition =
       readonly hostId: string;
     }
   | { readonly kind: 'duplicate-abort'; readonly jobId: string }
+  | {
+      /** E8-T05 (Spec §6.9): lawful absence — terminal done, NO artifact
+       *  written, NO rejection counted. Absence is evidence; the ai-lanes
+       *  probe reads the census via stats.silentDone. */
+      readonly kind: 'completed-silent';
+      readonly jobId: string;
+      readonly hostId: string;
+    }
   | {
       readonly kind: 'failed';
       readonly jobId: string;
@@ -102,6 +121,12 @@ export interface AiJobsService {
    *  coalescing keeps a queued name job and a queued summary apart). */
   readonly enqueueMissionSummary: (
     input: AiEnqueueMissionSummaryInput,
+    ctx: UseCtx,
+  ) => Promise<Result<AiEnqueueOutcome, LedgeError>>;
+  /** E8-T05 resumption briefs — same law; kind-keyed coalescing keeps a queued
+   *  brief apart from both name and summary jobs on the same subject. */
+  readonly enqueueMissionBrief: (
+    input: AiEnqueueMissionBriefInput,
     ctx: UseCtx,
   ) => Promise<Result<AiEnqueueOutcome, LedgeError>>;
   /** One drain step: reclaim sweep → lane admission → claim → execute → classify. */
@@ -294,6 +319,19 @@ export const createAiJobsService = (edge: ServiceEdge, own: AiJobsServiceDeps): 
         // No eligible rung incl. heuristic — terminal by exhaustion law, counted.
         await queue.markFailed({ jobId: job.jobId, failureClass: 'provider-error', now });
         return { kind: 'failed', jobId: job.jobId, failureClass: 'provider-error', hostId };
+      case 'silent': {
+        // E8-T05 absence law (Spec §6.9): the terminal is done WITHOUT an
+        // artifact — silence is evidence, never a counted failure. The guard
+        // re-verifies the kind at classification (defense in depth): a stray
+        // 'silent' on a non-preferred kind cannot silence it — that is a
+        // provider error and takes the release/retry ladder like any other.
+        if (!isAbsencePreferredKind(job.kind)) {
+          await queue.release({ jobId: job.jobId, workerTag, now });
+          return { kind: 'released', jobId: job.jobId, hostId, why: 'provider-error' };
+        }
+        await queue.markSilentDone({ jobId: job.jobId, now });
+        return { kind: 'completed-silent', jobId: job.jobId, hostId };
+      }
       case 'provider-error':
         await queue.release({ jobId: job.jobId, workerTag, now });
         return { kind: 'released', jobId: job.jobId, hostId, why: 'provider-error' };
@@ -393,6 +431,16 @@ export const createAiJobsService = (edge: ServiceEdge, own: AiJobsServiceDeps): 
       enqueueJob(
         {
           kind: 'mission-summary',
+          subjectId: input.subjectId,
+          lane: input.lane,
+          input: input.input,
+        },
+        ctx,
+      ),
+    enqueueMissionBrief: (input, ctx) =>
+      enqueueJob(
+        {
+          kind: 'mission-brief',
           subjectId: input.subjectId,
           lane: input.lane,
           input: input.input,

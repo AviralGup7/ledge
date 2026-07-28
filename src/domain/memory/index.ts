@@ -15,3 +15,5 @@ export type {
   ArtifactValidation,
   MemoryArtifactCandidate,
 } from './artifact.js';
+export { briefsGate } from './brief-gate.js';
+export type { BriefGateArtifact, BriefGateDecision } from './brief-gate.js';

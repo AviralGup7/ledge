@@ -262,6 +262,22 @@ export function createAiJobQueue(deps: AiJobQueueDeps): AiJobQueuePort {
       return ok(failed.value);
     },
 
+    markSilentDone: async ({ jobId, now }): Promise<Result<boolean, LedgeError>> => {
+      // E8-T05 (Spec §6.9): lawful absence — terminal 'done' with NO artifactRef
+      // and NO rejection count. The stats probe derives the silence census from
+      // exactly this shape (done ∧ no artifactRef); the row shape stays frozen.
+      const silenced = await deps.engine.txn(['ai_jobs'], 'readwrite', async (tx) => {
+        const table = jobsTable(tx);
+        const row = await table.get(jobId);
+        if (row === undefined) return false;
+        if (row.state === 'done' || row.state === 'failed') return false;
+        await table.put({ ...row, state: 'done', lease: null, completedAt: now, updatedAt: now });
+        return true;
+      });
+      if (!silenced.ok) return engineFail(silenced, silenced.error);
+      return ok(silenced.value);
+    },
+
     writeTerminalHinge: async (tx, { jobId, artifactId, workerTag, now }): Promise<void> => {
       const table = jobsTable(tx);
       const row = await table.get(jobId);
@@ -307,6 +323,7 @@ export function createAiJobQueue(deps: AiJobQueueDeps): AiJobQueuePort {
           failed: 0,
         }));
         let terminalOverRetention = 0;
+        let silentDone = 0;
         const horizon = now - TERMINAL_RETENTION_MS;
         for (const row of all) {
           if (row.jobId === STATS_ROW_ID) continue;
@@ -315,12 +332,15 @@ export function createAiJobQueue(deps: AiJobQueueDeps): AiJobQueuePort {
           if (depth !== undefined && state !== undefined) depth[state] += 1;
           const terminal = state === 'done' || state === 'failed';
           if (terminal && Number(row['completedAt'] ?? 0) < horizon) terminalOverRetention += 1;
+          // E8-T05: the silence census — done rows the hinge never stamped.
+          if (state === 'done' && row['artifactRef'] === undefined) silentDone += 1;
         }
         return {
           lanes,
           malformedRejected: counts.malformedRejected ?? 0,
           invalidRejected: counts.invalidRejected ?? 0,
           terminalOverRetention,
+          silentDone,
         } satisfies AiQueueStats;
       });
       if (!read.ok) return engineFail(read, read.error);

@@ -32,8 +32,20 @@ export type AiLane = (typeof AI_LANES)[number];
  *  E8-T01 ships 'mission-name' (Spec §6.1, EES-R 7.1 interactive rename ≤2.5s path);
  *  E8-T04 adds 'mission-summary' (Spec §6.3 · Blueprint §6.15 — park-time
  *  one-liner + thread narrative; fail-down law: low-fidelity evidence yields to
- *  the heuristic counts form, never placeholder prose). */
-export type AiJobKind = 'mission-name' | 'mission-summary';
+ *  the heuristic counts form, never placeholder prose).
+ *  E8-T05 adds 'mission-brief' (Spec §6.9 · W5 — resumption briefs; the
+ *  ABSENCE-PREFERENCE law below is their completion criterion). */
+export type AiJobKind = 'mission-name' | 'mission-summary' | 'mission-brief';
+
+/** E8-T05 · absence-preference vocabulary (Spec §6.9 failure law / roadmap row
+ *  completion criterion): for these kinds a rung-less or all-yield attempt is a
+ *  LAWFUL SILENCE (terminal done, no artifact, never a counted failure),
+ *  whereas summary/name kinds keep their heuristic answer. Hosts + the
+ *  classifier key their silence mapping on THIS set — absence is vocabulary,
+ *  not a provider mood. */
+export const ABSENCE_PREFERRED_JOB_KINDS: readonly AiJobKind[] = ['mission-brief'];
+export const isAbsencePreferredKind = (kind: AiJobKind): boolean =>
+  ABSENCE_PREFERRED_JOB_KINDS.includes(kind);
 
 export type AiJobState = 'queued' | 'claimed' | 'done' | 'failed';
 
@@ -109,6 +121,10 @@ export interface AiQueueStats {
   readonly invalidRejected: number;
   /** Terminal rows older than the retention horizon (candidate purge backlog). */
   readonly terminalOverRetention: number;
+  /** E8-T05 additive (Spec §6.9): terminal done rows with NO artifact — lawful
+   *  absences, probe-visible as evidence. Derivable from the frozen row shape
+   *  (done ∧ no artifactRef); never a rejection counter. */
+  readonly silentDone?: number | undefined;
 }
 
 /** Terminal-write input — executed by the queue inside the application's hinged
@@ -173,6 +189,18 @@ export interface AiJobQueuePort {
   markFailed: (input: {
     readonly jobId: string;
     readonly failureClass: AiFailureClass;
+    readonly now: number;
+  }) => Promise<Result<boolean, LedgeError>>;
+  /**
+   * E8-T05 · absence-preference terminal (Spec §6.9): mark a claimed job
+   * terminally 'done' WITHOUT an artifact. Lawful silence is not the
+   * exactly-once hinge (no MemoryArtifactWritten event shares its fate, so no
+   * hinge is needed) and not a counted rejection (absence is evidence, never a
+   * fault). false = job not found or already terminal (a redelivered silence
+   * is benign — the terminal row stands).
+   */
+  markSilentDone: (input: {
+    readonly jobId: string;
     readonly now: number;
   }) => Promise<Result<boolean, LedgeError>>;
   /**
@@ -244,6 +272,31 @@ export interface MissionSummaryInput {
   readonly missionNameHint?: string | undefined;
 }
 
+// ── E8-T05 · resumption briefs (Spec §6.9, W5) ───────────────────────────────
+/** Producer-hint budgets for the brief input vocabulary. */
+export const MISSION_BRIEF_LAST_ACTIVE_MAX_CHARS = 200;
+export const MISSION_BRIEF_PENDING_MAX_CHARS = 200;
+/** Surface budget: a brief card reads two-three sentences, never a scroll. */
+export const MISSION_BRIEF_MAX_CHARS = 420;
+
+/**
+ * Worker input for a 'mission-brief' job. Same tab/corpus evidence as naming;
+ * `lastActiveTitle`/`pendingNote` are producer hints (W5: "where you stopped,
+ * what's pending") carried verbatim when present, capped, never invented. A
+ * brief has NO heuristic answer — thin evidence is lawful silence (the
+ * absence-preference terminal), which is why `MissionBriefInput` needs no
+ * heuristic provider's vocabulary.
+ */
+export interface MissionBriefInput {
+  readonly tabCount: number;
+  readonly rootDomains: readonly string[];
+  readonly takenAt: number;
+  readonly tabs?: readonly MissionNameTab[] | undefined;
+  readonly missionNameHint?: string | undefined;
+  readonly lastActiveTitle?: string | undefined;
+  readonly pendingNote?: string | undefined;
+}
+
 /** Result of one job attempt at a host (pre-validation — the §2.12 post-validation
  *  law is the queue's/application's, never the host's). */
 export type ExecuteOutcome =
@@ -255,6 +308,14 @@ export type ExecuteOutcome =
     }
   | { readonly kind: 'provider-error'; readonly providerId: string }
   | { readonly kind: 'no-rung' }
+  | {
+      /** E8-T05 (Spec §6.9): every eligible rung answered with a typed yield, or
+       *  no rung covers the kind at all — for absence-preferred kinds the host
+       *  says SILENT, and the classifier records terminal done WITHOUT an
+       *  artifact (lawful absence; evidence, never a failure). Only hosts may
+       *  produce this outcome, and only when isAbsencePreferredKind(job.kind). */
+      readonly kind: 'silent';
+    }
   | { readonly kind: 'host-unavailable' }
   | { readonly kind: 'host-lost' };
 

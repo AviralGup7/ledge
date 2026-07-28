@@ -284,6 +284,17 @@ export const MESSAGE_REGISTRY: Readonly<Record<string, MessageSpec>> = {
     payload: { parkCurrent: 'boolean', targetMissionId: 'id' },
     // §3 defers the Applied shape to Blueprint 6.8; Tier 2 narrows additively.
   },
+  // E8-T05 (Spec §6.9 · W5 · docs/adr-notes/e8-resumption-briefs.md J3): brief
+  // dismissal rides the v1.1 reserve tier — registered now so the surface's
+  // wire contract is frozen with the feature, dormant until the tier flips
+  // (validator answers unavailable-name today; surfaces carry a local seam).
+  DismissBrief: {
+    kind: 'command',
+    family: 'command',
+    availability: 'v1.1',
+    payload: { missionId: 'id', 'briefArtifactId?': 'id' },
+    response: {},
+  },
 
   // ── §3.4 Queries (Surface → SW) ─────────────────────────────────────────────────
   GetBootstrap: {
@@ -376,6 +387,18 @@ export const MESSAGE_REGISTRY: Readonly<Record<string, MessageSpec>> = {
     // never a live re-query). Additive-optional on the DTO, wire payload is
     // unchanged, so older readers stand.
     payload: { 'bootReportId?': 'id' },
+  },
+  // E8-T05 (Spec §6.9 · J3 v1.1 reserve): one mission's resumption brief for
+  // the guardian card. Absence is a first-class shape — BOTH fields absent is
+  // the lawful no-brief answer (dismissed, silent, or low-tier §6.11), not an
+  // error; presentation ('normal'|'suggested') is the domain tier word, never
+  // a number (EES-R18).
+  GetMissionBrief: {
+    kind: 'query',
+    family: 'query',
+    availability: 'v1.1',
+    payload: { missionId: 'id' },
+    response: { 'text?': 'string', 'presentation?': 'string' },
   },
 
   // ── §3.5 Streams (SW → Surface) ─────────────────────────────────────────────────

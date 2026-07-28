@@ -31,6 +31,18 @@ export interface PrefsService {
     input: { readonly id: string; readonly pinned: boolean },
     ctx: UseCtx,
   ): Promise<Result<Record<string, never>, LedgeError>>;
+  /**
+   * E8-T05 (Spec §6.9 · W5 "Don't show again"): dismiss a mission's resumption
+   * brief FOREVER. Preference, not deletion (ADR nota e8-resumption-briefs J4):
+   * the artifact stands for other surfaces — the dismissal event is what the
+   * brief gate (domain/memory/briefsGate) reads to answer 'dismissed'.
+   * Re-dismiss of the same mission converges (projection keys on missionId);
+   * a redelivered command cid dedupes at the appender like every command.
+   */
+  dismissMissionBrief(
+    input: { readonly missionId: string; readonly briefArtifactId?: string | undefined },
+    ctx: UseCtx,
+  ): Promise<Result<{ readonly briefDismissalId: string }, LedgeError>>;
 }
 
 export const createPrefsService = (edge: ServiceEdge): PrefsService => {
@@ -106,6 +118,34 @@ export const createPrefsService = (edge: ServiceEdge): PrefsService => {
       ctx.token.throwIfCancelled();
       const key = `pinnedMission.${input.id}`;
       return settingWrite('SetPinned', ctx.cid, key, input.pinned);
+    },
+
+    dismissMissionBrief: async (input, ctx) => {
+      ctx.token.throwIfCancelled();
+      if (input.missionId.trim().length === 0) {
+        return err(
+          ledgeError('E_DOMAIN_LEGALITY', { operation: PREFS_OP, reason: 'mission-id-empty' }),
+        );
+      }
+      const briefDismissalId = deps.ids.nextId();
+      const committed = await appender.commit({
+        plans: [
+          {
+            type: 'BriefDismissed',
+            payload: {
+              briefDismissalId,
+              missionId: input.missionId,
+              dismissedAt: deps.now(),
+              ...(input.briefArtifactId !== undefined && input.briefArtifactId.length > 0
+                ? { briefArtifactId: input.briefArtifactId }
+                : {}),
+            },
+          },
+        ],
+        key: opKey(edge, 'DismissBrief', ctx.cid),
+      });
+      if (!committed.ok) return err(committed.error);
+      return ok({ briefDismissalId });
     },
   };
 };

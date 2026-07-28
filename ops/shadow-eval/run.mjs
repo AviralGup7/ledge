@@ -58,6 +58,11 @@ const GATES = {
     metric: 'one-liners ≤ 120 chars ∧ no urgency punctuation',
     threshold: 1,
   },
+  // E8-T05 amendment (append-only, docs/adr-notes/e8-resumption-briefs.md):
+  'G12-absence-law': {
+    metric: 'rows where brief silence ⇔ evidence-thin, briefs lawful elsewhere',
+    threshold: 1,
+  },
 };
 
 const fail = (msg) => {
@@ -286,6 +291,47 @@ const heuristicSummaryRef = (row) => {
   const candidates = [`${base}${presence} · ${worstTime}`, `${base} · ${worstTime}`, base];
   return { oneLiner: candidates.find((line) => line.length <= ONE_LINER_CAP) ?? base };
 };
+
+// ── E8-T05 · brief assembly mirror (Spec §6.9 — G12 audits the ABSENCE-
+// PREFERENCE law at corpus scale; unit lane A*/B*/D* pins the runtime
+// provider + hosts + gate to it). A brief exists iff calibration NAMED and at
+// least one producer hint survives sanitation; every other path is silence. ──
+const BRIEF_CAP = 420;
+const BRIEF_HINT_CAP = 200;
+const BRIEF_MIN_KEEP = 40;
+
+const briefTruncateAtWord = (text, budget) => {
+  if (text.length <= budget) return text;
+  const cut = text.slice(0, budget);
+  const lastSpace = cut.lastIndexOf(' ');
+  return lastSpace > 0 ? cut.slice(0, lastSpace) : cut;
+};
+
+/** Mirror of providers/ondevice/briefs.ts (raw-hint budget law). */
+const briefAttemptRef = (named, row, rawHint) => {
+  if (named === null) return { form: 'silent' };
+  const hint = rawHint.replace(/\s+/g, ' ').trim().slice(0, BRIEF_HINT_CAP);
+  if (hint.length === 0) return { form: 'silent' }; // state alone is not a brief
+  const tail = named.value.indexOf(' · ');
+  const name = tail > 0 ? named.value.slice(0, tail) : named.value;
+  const domains = row.rootDomains.length;
+  const tabs = `${row.tabCount} ${row.tabCount === 1 ? 'tab' : 'tabs'}`;
+  const state =
+    domains === 0
+      ? `You left ${name} with ${tabs}.`
+      : `You left ${name} with ${tabs} across ${domains} ${domains === 1 ? 'domain' : 'domains'}.`;
+  const stoppedTemplate = 'You stopped at .'.length;
+  const stopped = `You stopped at ${hint}.`;
+  let text = `${state} ${stopped}`;
+  if (text.length <= BRIEF_CAP) return { form: 'brief', text };
+  const budget = BRIEF_CAP - state.length - 1;
+  if (budget >= BRIEF_MIN_KEEP + stoppedTemplate) {
+    const kept = briefTruncateAtWord(hint, budget - stoppedTemplate);
+    text = `${state} You stopped at ${kept}.`;
+    if (text.length <= BRIEF_CAP) return { form: 'brief', text };
+  }
+  return { form: 'brief', text: state }; // unreachable in arithmetic; mirrored for totality
+};
 if (!WebAssembly.validate(kernelBytes)) fail('kernel bytes fail WebAssembly.validate');
 const { instance } = await WebAssembly.instantiate(kernelBytes, {});
 const memory = instance.exports.memory;
@@ -363,7 +409,10 @@ const runPass = () => {
             oneLiner: assembleOneLinerRef(named, evidence, row.rootDomains.length),
           }
         : { form: 'heuristic', oneLiner: heuristicSummaryRef(row).oneLiner };
-    perRow.push({ row, named, topicOk, heuristicOk, heuristicWords, summary });
+    // E8-T05 (G12): every row also attempts a §6.9 brief with a deterministic
+    // producer hint — the absence law must hold exactly on evidence-thin rows.
+    const brief = briefAttemptRef(named, row, `resumption checkpoint ${row.id}`);
+    perRow.push({ row, named, topicOk, heuristicOk, heuristicWords, summary, brief });
   }
   return { perRow, termFired, machineMismatches };
 };
@@ -387,6 +436,19 @@ const summarize = ({ perRow, termFired, machineMismatches }) => {
   const oneLinerViolations = perRow.filter(
     (r) => r.summary.oneLiner.length > ONE_LINER_CAP || r.summary.oneLiner.includes('!'),
   ).length;
+  // E8-T05 (Spec §6.9): the absence law — silence EXACTLY on evidence-thin
+  // rows, lawful cards elsewhere (budget, verbatim hint, calm punctuation).
+  const briefLawViolations = perRow.filter((r) => {
+    const shouldBeSilent = r.named === null;
+    const isSilent = r.brief.form === 'silent';
+    if (shouldBeSilent !== isSilent) return true;
+    if (isSilent) return false;
+    const text = r.brief.text;
+    const hint = `resumption checkpoint ${r.row.id}`;
+    return text.length > BRIEF_CAP || text.includes('!') || !text.includes(hint);
+  }).length;
+  const briefSilences = perRow.filter((r) => r.brief.form === 'silent').length;
+  const briefsWritten = perRow.length - briefSilences;
   return {
     judged,
     totalRows: rows.length,
@@ -408,6 +470,9 @@ const summarize = ({ perRow, termFired, machineMismatches }) => {
     failDownTotality: withSummary,
     ondeviceSummaries,
     oneLinerDisciplinePass: oneLinerViolations === 0,
+    briefLawViolations,
+    briefSilences,
+    briefsWritten,
   };
 };
 
@@ -441,6 +506,9 @@ const metrics = {
   machineAgreementPass: firstSummary.machineMismatches === 0,
   failDownTotalityPass: firstSummary.failDownTotality === firstSummary.judged,
   oneLinerDisciplinePass: firstSummary.oneLinerDisciplinePass,
+  briefAbsenceLawPass: firstSummary.briefLawViolations === 0,
+  briefsWritten: firstSummary.briefsWritten,
+  briefSilences: firstSummary.briefSilences,
 };
 const gateResults = [
   { id: 'G1-fabrication-zero', pass: metrics.fabrications === 0, value: metrics.fabrications },
@@ -481,6 +549,11 @@ const gateResults = [
     id: 'G11-one-liner-discipline',
     pass: metrics.oneLinerDisciplinePass,
     value: metrics.oneLinerDisciplinePass,
+  },
+  {
+    id: 'G12-absence-law',
+    pass: metrics.briefAbsenceLawPass,
+    value: metrics.briefAbsenceLawPass,
   },
 ];
 const failed = gateResults.filter((g) => !g.pass);

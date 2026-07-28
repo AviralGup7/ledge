@@ -18,6 +18,7 @@ import {
 import type { CidEntropy } from '../components/session/ids.js';
 import { createViewStore, viewFrameOf, type ViewStore } from '../components/state/view-store.js';
 import { createHeartbeatPill, type HeartbeatPill } from '../components/widgets/heartbeat.js';
+import { renderBriefCard, type PendingBrief } from '../components/widgets/brief-card.js';
 import {
   actionButton,
   renderMissionCard,
@@ -39,6 +40,21 @@ export interface GuardianDeps {
    *  rejoin on wake is the honest resume). */
   readonly onWake?: ((listener: () => void) => () => void) | undefined;
   readonly contractHash?: string | undefined;
+  /**
+   * E8-T05 brief seam (Spec §6.9 · W5 · ADR note e8-resumption-briefs J3):
+   * `pending` answers the domain-gated briefs for this mount's missions;
+   * `onDismiss` records the per-mission-forever dismissal. The DismissBrief /
+   * GetMissionBrief wire names ride the v1.1 reserve tier (dormant today), so
+   * composition injects this seam (production root: quiet-page archive read +
+   * prefs dismiss; tests: fakes). DEFAULT IS ABSENCE: no seam, no seam fault,
+   * no artifact — all render identically nothing.
+   */
+  readonly briefs?:
+    | {
+        readonly pending: () => Promise<readonly PendingBrief[]>;
+        readonly onDismiss?: ((missionId: string) => void) | undefined;
+      }
+    | undefined;
 }
 
 export interface Mounted {
@@ -146,6 +162,12 @@ export const mountGuardian = (doc: Document, deps: GuardianDeps): Mounted => {
     cls: 'guardian-open',
     attrs: { 'data-section': 'open', 'aria-label': copyOf('msg.aria.tabs') },
   });
+  // E8-T05 · W5: the brief slot sits at the window top of the resumption area
+  // (above the mission cards); absence renders an empty slot, never a stub.
+  const briefSlot = el(doc, 'section', {
+    cls: 'guardian-briefs',
+    attrs: { 'data-section': 'briefs', 'aria-label': copyOf('msg.aria.brief') },
+  });
   const missionsSection = el(doc, 'section', {
     cls: 'guardian-missions',
     attrs: { 'data-section': 'missions', 'aria-label': copyOf('msg.aria.missions') },
@@ -161,9 +183,58 @@ export const mountGuardian = (doc: Document, deps: GuardianDeps): Mounted => {
   root.appendChild(pendingStrip);
   root.appendChild(recoverySlot);
   root.appendChild(openSection);
+  root.appendChild(briefSlot);
   root.appendChild(missionsSection);
   root.appendChild(startSection);
   doc.body.appendChild(root);
+
+  // ── E8-T05 brief slot (W5: shown ONCE per mount, dismissible per-mission) ──
+  // Session memory: shown-once is a mount-scoped stamp (a re-seed never
+  // resurfaces the same brief); dismissal outranks everything and rides the
+  // seam so the app can record it forever (Spec §6.9).
+  const briefShownThisMount = new Set<string>();
+  const briefDismissed = new Set<string>();
+
+  const renderBriefs = (): void => {
+    const seam = deps.briefs;
+    if (seam === undefined || !booted) {
+      clearChildren(briefSlot);
+      return; // absence-by-default (silent posture)
+    }
+    void seam
+      .pending()
+      .then((pending) => {
+        // Reconcile, never wipe-and-redraw: a card already shown STAYS shown
+        // until dismissed or its brief stops being pending (W5's "shown once"
+        // is sticky — a later seed never resurfaces AND never erases it).
+        const alive = new Set(pending.map((b) => b.missionId));
+        for (const card of briefSlot.querySelectorAll('[data-widget="brief-card"]')) {
+          const id = card.getAttribute('data-mission-id') ?? '';
+          if (!alive.has(id) || briefDismissed.has(id)) card.remove();
+        }
+        for (const brief of pending) {
+          if (briefDismissed.has(brief.missionId)) continue;
+          if (briefShownThisMount.has(brief.missionId)) continue;
+          briefShownThisMount.add(brief.missionId);
+          briefSlot.appendChild(
+            renderBriefCard(doc, brief, {
+              onResume: (missionId) => {
+                runCommand('ResumeMission', { missionId, mode: 'full' });
+              },
+              onDismiss: (missionId) => {
+                briefDismissed.add(missionId);
+                briefSlot.querySelector(`[data-mission-id="${missionId}"]`)?.remove();
+                seam.onDismiss?.(missionId);
+              },
+            }),
+          );
+        }
+      })
+      .catch(() => {
+        // Seam fault = absence for NEW briefs (calm degrade): cards already
+        // shown were true when written and stay; nothing new renders.
+      });
+  };
 
   // ── renderers (pure presentation of current local state) ──────────────────────
   const renderPending = (): void => {
@@ -456,6 +527,10 @@ export const mountGuardian = (doc: Document, deps: GuardianDeps): Mounted => {
         : copyOf('msg.heartbeat.quiet'),
     );
     booted = true;
+    // E8-T05: briefs render at boot completion (the store seed fires while
+    // `booted` is still false — the once-per-mount render belongs HERE, with
+    // later seeds only reconciling dismissals/removals).
+    renderBriefs();
     // First-run posture: nothing kept and nothing parked ⇒ offer FirstRunIngest.
     if (b.heartbeat.keptCount === 0 && b.missions.length === 0) {
       clearChildren(recoverySlot);
@@ -584,7 +659,12 @@ export const mountGuardian = (doc: Document, deps: GuardianDeps): Mounted => {
   });
 
   const detachStore = store.subscribe((event) => {
-    if (event.kind === 'seed') renderMissions();
+    if (event.kind === 'seed') {
+      renderMissions();
+      // E8-T05: briefs ride the bootstrap seed (the once-per-mount stamp keeps
+      // any later seed from resurfacing a card the user already saw).
+      renderBriefs();
+    }
   });
 
   const detachWake = deps.onWake?.(() => {

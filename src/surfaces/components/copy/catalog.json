@@ -5,6 +5,10 @@
       "recovered": "recovered after browser restart",
       "quiet": "Nothing open. Everything is kept."
     },
+    "brief": {
+      "heading": "Pick up where you left off",
+      "suggested": "Suggested"
+    },
     "empty": {
       "strip": "Nothing open. Everything is kept.",
       "archive": "Your future library. Park something and it will be here.",
@@ -83,7 +87,8 @@
       "exclude-candidate": "Leave out",
       "scan-full": "Run a full scan",
       "scan-full-confirm": "Run it anyway",
-      "download-bundle": "Download diagnostics bundle"
+      "download-bundle": "Download diagnostics bundle",
+      "dismiss-brief": "Don't show again"
     },
     "undo": {
       "archived": "Back from the Archive.",
@@ -129,7 +134,8 @@
       "actions": "Actions",
       "list": "List",
       "close": "Close",
-      "input": "Input"
+      "input": "Input",
+      "brief": "Resumption brief"
     },
     "section": {
       "library": "Library",

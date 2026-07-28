@@ -20,7 +20,10 @@
     "totalityPass": true,
     "machineAgreementPass": true,
     "failDownTotalityPass": true,
-    "oneLinerDisciplinePass": true
+    "oneLinerDisciplinePass": true,
+    "briefAbsenceLawPass": true,
+    "briefsWritten": 532,
+    "briefSilences": 19
   },
   "deadTerms": [],
   "gates": [
@@ -120,6 +123,15 @@
       "value": true,
       "law": {
         "metric": "one-liners ≤ 120 chars ∧ no urgency punctuation",
+        "threshold": 1
+      }
+    },
+    {
+      "id": "G12-absence-law",
+      "pass": true,
+      "value": true,
+      "law": {
+        "metric": "rows where brief silence ⇔ evidence-thin, briefs lawful elsewhere",
         "threshold": 1
       }
     }

@@ -11,7 +11,8 @@ import {
 } from '@/application/contracts/index.js';
 import type { Hello, MessageEnvelope, ValidationOutcome } from '@/application/contracts/index.js';
 import { platformIds, type IdGenerator } from '@/shared-kernel/identity/index.js';
-import type { AiPayloadRef } from '@/application/ports/ai-jobs.port.js';
+import type { AiJobKind, AiPayloadRef } from '@/application/ports/ai-jobs.port.js';
+import { isAbsencePreferredKind } from '@/application/ports/ai-jobs.port.js';
 import type { MemoryArtifactCandidate } from '@/domain/memory/index.js';
 import { createAiLadder, createHeuristicNamer } from '@/infrastructure/ai/index.js';
 import { createOnDeviceNamer } from '@/infrastructure/ai/providers/ondevice/index.js';
@@ -49,18 +50,29 @@ const createWorkroomExecutor = async (): Promise<WorkroomJobExecutor> => {
   const ladder = createAiLadder({ providers });
   return {
     execute: async (job) => {
+      const kind = job.kind as AiJobKind;
       const rungs = ladder.resolve({
-        kind: job.kind as never,
+        kind,
         now: Date.now(),
         forceHeuristic: false,
       });
+      // E8-T05 (Spec §6.9): no rung covers an absence-preferred kind (capability
+      // absent; briefs have no heuristic rung) ⇒ 'silent', never an error.
+      if (rungs.length === 0 && isAbsencePreferredKind(kind)) return { failureClass: 'silent' };
+      let anyYield = false;
+      let anyStrike = false;
       for (const rung of rungs) {
         const ran: Result<MemoryArtifactCandidate, LedgeError> = await rung.run({
-          kind: job.kind as never,
+          kind,
           subjectId: job.payloadRef.subjectId,
           value: job.payloadRef.input,
         });
         if (ran.ok) return { artifact: ran.value };
+        if (ran.error.details?.['yield'] === true) anyYield = true;
+        else anyStrike = true;
+      }
+      if (!anyStrike && anyYield && isAbsencePreferredKind(kind)) {
+        return { failureClass: 'silent' };
       }
       return { failureClass: 'provider-error' };
     },

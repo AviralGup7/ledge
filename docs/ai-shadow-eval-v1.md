@@ -28,7 +28,7 @@ must equal an accepted frame id **or** its display string, case-insensitive —
 for the on-device side; the heuristic always answers, it forfeits nothing by
 silence — the comparison deliberately denies the ML rung any free lunch.
 
-## 2 · Gates (all nine must pass)
+## 2 · Gates (all twelve must pass)
 
 | gate | law                                                                        | threshold |
 | ---- | -------------------------------------------------------------------------- | --------- |
@@ -43,6 +43,7 @@ silence — the comparison deliberately denies the ML rung any free lunch.
 | G9   | machine agreement (WASM machine == JS law, per-term verdicts)              | `= 1`     |
 | G10  | fail-down totality (rows with SOME lawful summary: ondevice or heuristic)  | `= 1`     |
 | G11  | one-liner discipline (≤ 120 chars ∧ no urgency punctuation, both families) | `= 1`     |
+| G12  | absence law (brief silence ⇔ evidence-thin; lawful cards elsewhere)        | `= 1`     |
 
 G1 and G9 are honesty gates (never invent; the machine IS the law). G4 exists
 because an unreachable lexicon term is dead weight pretending to be
@@ -52,7 +53,13 @@ this gate pins every emitted value). **G10/G11 are the E8-T04 amendment**
 (append-only, `docs/adr-notes/e8-summaries-v1.md` I3): Spec §6.3's fail-down
 law runs at corpus scale — the on-device one-liner answers calibrated rows,
 the heuristic counts form answers the rest, and nothing anywhere writes
-placeholder prose.
+placeholder prose. **G12 is the E8-T05 amendment** (append-only,
+`docs/adr-notes/e8-resumption-briefs.md` J6): Spec §6.9's absence-preference
+law runs at corpus scale — every row attempts a brief with a deterministic
+producer hint, and silence must answer EXACTLY the evidence-thin rows while
+every written card obeys the 420-char budget, carries its hint verbatim, and
+keeps calm punctuation. There is no heuristic brief rung to catch a lie (that
+is the point); G12 makes the honest absence arithmetic.
 
 ## 3 · Current evidence (frozen at ship time)
 
@@ -70,6 +77,9 @@ sub-families):
   19 heuristic counts-form answers — every yield row lands the §6.3
   name+counts form); one-liner discipline `1.0` (120-char budget ∧ calm
   punctuation, both families)
+- E8-T05 amendment: absence law `551/551` — `532` brief cards written (budget
+  ∧ verbatim hint ∧ calm punctuation) and `19` silences answering exactly the
+  `expect: yield` rows; zero brief fabrications, zero missed cards
 
 ## 4 · Trust chain (each link a mechanical gate)
 

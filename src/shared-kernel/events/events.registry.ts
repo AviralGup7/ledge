@@ -235,6 +235,23 @@ export const EVENT_REGISTRY = {
     idempotentBy: null,
     fields: { artifactId: 'id', cause: 'string' },
   },
+  // E8-T05 addition (A-09 note: docs/adr-notes/e8-resumption-briefs.md) — Spec
+  // §6.9/W5 "Don't show again": per-mission-forever brief dismissal. Dismissal
+  // is a PREFERENCE, never a deletion — the artifact row stands for other
+  // surfaces; projections key the suppressed state by missionId (re-dismiss
+  // same-mission converges to the same state; event redelivery dedupes by id).
+  BriefDismissed: {
+    schemaV: 1,
+    producer: 'Corrections',
+    consumers: ['MissionsView', 'MemoryView'],
+    idempotentBy: 'briefDismissalId',
+    fields: {
+      briefDismissalId: 'id',
+      missionId: 'id',
+      dismissedAt: 'number',
+      'briefArtifactId?': 'id',
+    },
+  },
   MemoryWiped: {
     schemaV: 1,
     producer: 'ForgetEverything',

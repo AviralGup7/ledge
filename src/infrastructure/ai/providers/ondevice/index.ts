@@ -18,14 +18,18 @@
 //  * ISOLATION (ADR-041 / E8-T02 lint): zero imports of mutation-capable
 //    portraits; the provider's only output type is MemoryArtifactCandidate.
 import {
+  MISSION_BRIEF_LAST_ACTIVE_MAX_CHARS,
+  MISSION_BRIEF_PENDING_MAX_CHARS,
   MISSION_SUMMARY_NAME_HINT_MAX_CHARS,
   type AiJobKind,
+  type MissionBriefInput,
   type MissionNameInput,
   type MissionSummaryInput,
 } from '@/application/ports/ai-jobs.port.js';
 import type { MemoryArtifactCandidate } from '@/domain/memory/index.js';
 import { err, ledgeError, ok, type LedgeError, type Result } from '@/shared-kernel/result/index.js';
 import type { AiProviderPort } from '../../ladder.js';
+import { buildMissionBrief } from './briefs.js';
 import { buildMissionCorpus } from './corpus.js';
 import { MODEL_CLASS } from './model-layout.js';
 import { loadOnDeviceModel, type OnDeviceModel, type OnDeviceModelHost } from './model-load.js';
@@ -67,13 +71,45 @@ const rawTabs = (raw: Readonly<Record<string, unknown>>): MissionNameInput['tabs
 const createProviderFromModel = (model: OnDeviceModel): AiProviderPort => ({
   providerId: ONDEVICE_PROVIDER_ID,
   modelClass: MODEL_CLASS,
-  capabilities: ['mission-name', 'mission-summary'],
+  capabilities: ['mission-name', 'mission-summary', 'mission-brief'],
   run: async (job: {
     readonly kind: AiJobKind;
     readonly subjectId: string;
     readonly value: unknown;
   }): Promise<Result<MemoryArtifactCandidate, LedgeError>> => {
     const raw = (job.value ?? {}) as Readonly<Record<string, unknown>>;
+    if (job.kind === 'mission-brief') {
+      // E8-T05 (Spec §6.9): briefs share the naming evidence law AND the same
+      // calibration floor — below it the provider yields and, with no heuristic
+      // rung by design, the host answers lawful silence (absence preference).
+      const hint = raw['missionNameHint'];
+      const lastActive = raw['lastActiveTitle'];
+      const pending = raw['pendingNote'];
+      const input: MissionBriefInput = {
+        tabCount: rawTabCount(raw),
+        rootDomains: rawDomains(raw),
+        takenAt: rawTakenAt(raw),
+        ...(rawTabs(raw) !== undefined ? { tabs: rawTabs(raw) } : {}),
+        ...(typeof hint === 'string' && hint.length > 0
+          ? { missionNameHint: hint.slice(0, MISSION_SUMMARY_NAME_HINT_MAX_CHARS) }
+          : {}),
+        ...(typeof lastActive === 'string' && lastActive.length > 0
+          ? { lastActiveTitle: lastActive.slice(0, MISSION_BRIEF_LAST_ACTIVE_MAX_CHARS) }
+          : {}),
+        ...(typeof pending === 'string' && pending.length > 0
+          ? { pendingNote: pending.slice(0, MISSION_BRIEF_PENDING_MAX_CHARS) }
+          : {}),
+      };
+      const brief = buildMissionBrief(model, input);
+      if (brief.status === 'yield') return err(yieldNoConfidence());
+      return ok({
+        value: brief.text,
+        confidence: brief.confidence,
+        provider: ONDEVICE_PROVIDER_ID,
+        modelClass: MODEL_CLASS,
+        schemaV: ONDEVICE_ARTIFACT_SCHEMA_V,
+      });
+    }
     if (job.kind === 'mission-summary') {
       // E8-T04 (Spec §6.3): the summary shares the naming evidence law; thin
       // evidence yields typed and the ladder falls to the heuristic form.
@@ -163,7 +199,7 @@ export const createDeferredOnDeviceNamer = (host?: OnDeviceModelHost): AiProvide
   return {
     providerId: ONDEVICE_PROVIDER_ID,
     modelClass: MODEL_CLASS,
-    capabilities: ['mission-name', 'mission-summary'],
+    capabilities: ['mission-name', 'mission-summary', 'mission-brief'],
     run: async (job) => {
       const model = await load();
       if (!model.ok) return err(capabilityAbsentYield(model.error));
