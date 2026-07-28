@@ -295,6 +295,24 @@ export const MESSAGE_REGISTRY: Readonly<Record<string, MessageSpec>> = {
     payload: { missionId: 'id', 'briefArtifactId?': 'id' },
     response: {},
   },
+  // E8-T07 (Spec "marks, does not close" · roadmap dupe-actions row ·
+  // docs/adr-notes/e8-dupe-actions.md): one-tap dupe relief rides the v1.1
+  // reserve tier. Parking is the ONLY closing vocabulary — response counts
+  // parks, because that is the whole honest story.
+  ParkDupeTabs: {
+    kind: 'command',
+    family: 'command',
+    availability: 'v1.1',
+    payload: { canonHash: 'string', keepBrowserTabId: 'int' },
+    response: { parkedCount: 'int' },
+  },
+  IgnoreDupeGroup: {
+    kind: 'command',
+    family: 'command',
+    availability: 'v1.1',
+    payload: { canonHash: 'string', ignored: 'boolean' },
+    response: {},
+  },
 
   // ── §3.4 Queries (Surface → SW) ─────────────────────────────────────────────────
   GetBootstrap: {
@@ -399,6 +417,16 @@ export const MESSAGE_REGISTRY: Readonly<Record<string, MessageSpec>> = {
     availability: 'v1.1',
     payload: { missionId: 'id' },
     response: { 'text?': 'string', 'presentation?': 'string' },
+  },
+  // E8-T07 (v1.1 reserve): open-duplicate groups for the guardian strip.
+  // Groups visible ⇒ relief available; empty ⇒ silence (same absence posture
+  // as briefs — the strip renders nothing, never a stub).
+  GetDupeGroups: {
+    kind: 'query',
+    family: 'query',
+    availability: 'v1.1',
+    payload: {},
+    response: { groups: { array: 'unknown' } },
   },
 
   // ── §3.5 Streams (SW → Surface) ─────────────────────────────────────────────────

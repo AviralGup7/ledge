@@ -37,17 +37,20 @@ const zone1 = { zone: 'zone1' as const };
 
 // ─── registry integrity ──────────────────────────────────────────────────────────
 describe('E1-T11 registry', () => {
-  it('catalogue covers §3.3–3.7 exactly: 31 commands, 10 queries, 13 streams, 17 workroom, 5 sync', () => {
+  it('catalogue covers §3.3–3.7 exactly: 33 commands, 11 queries, 13 streams, 17 workroom, 5 sync', () => {
     // E6-T01 (user-ruled additive amendment, docs/adr-notes/e6-recovery-w7.md):
     // RestoreBootSession (29→30) + GetBootReport (8→9) — W7 wire pair.
     // E8-T05 (additive amendment, docs/adr-notes/e8-resumption-briefs.md J3):
     // DismissBrief (30→31) + GetMissionBrief (9→10) — §6.9/W5 brief wire pair,
     // registered at the v1.1 reserve tier (dormant: unavailable-name today).
+    // E8-T07 (additive amendment, docs/adr-notes/e8-dupe-actions.md):
+    // ParkDupeTabs + IgnoreDupeGroup (31→33) + GetDupeGroups (10→11) — the
+    // dupe strip family, v1.1 reserve tier like their brief siblings.
     const byFamily = Object.values(MESSAGE_REGISTRY).reduce<Record<string, number>>(
       (acc, s) => ({ ...acc, [s.family]: (acc[s.family] ?? 0) + 1 }),
       {},
     );
-    expect(byFamily).toEqual({ command: 31, query: 10, stream: 13, workroom: 17, sync: 5 });
+    expect(byFamily).toEqual({ command: 33, query: 11, stream: 13, workroom: 17, sync: 5 });
   });
 
   it('every payload spec has at least one required-or-optional key, or is a declared empty payload', () => {

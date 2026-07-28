@@ -88,6 +88,7 @@ interface GuardianHarness {
 const mount = (options?: {
   readonly ackResponder?: (env: SentEnvelope) => unknown;
   readonly briefs?: GuardianDeps['briefs'];
+  readonly dupes?: GuardianDeps['dupes'];
 }): GuardianHarness => {
   const doc = new FakeDocument();
   const fake = createFakeTransport();
@@ -98,6 +99,7 @@ const mount = (options?: {
     transport: fake.transport,
     entropy: createTestEntropy(),
     ...(options?.briefs !== undefined ? { briefs: options.briefs } : {}),
+    ...(options?.dupes !== undefined ? { dupes: options.dupes } : {}),
     onWake: (listener) => {
       wakeListener = listener;
       return () => {
@@ -675,6 +677,104 @@ describe('E8-T05 guardian · resumption briefs (Spec §6.9 · W5)', () => {
     await flush();
     expect(cards(faulty.doc)).toHaveLength(0); // calm degrade, no banner
     expect(faulty.doc.body.querySelector('[role="alert"]')).toBeNull();
+    faulty.unmount();
+  });
+});
+
+describe('E8-T07 guardian · dupe strip (Spec "marks, does not close" · opt-in law)', () => {
+  const GROUP = {
+    canonHash: 'hash-a',
+    title: 'Spec — Ledge docs',
+    domain: 'docs.example',
+    duplicateCount: 2,
+    keepBrowserTabId: 42,
+  };
+
+  const rowOf = (doc: FakeDocument, hash: string): FakeElement =>
+    mustQuery(section(doc, 'dupes'), `[data-canon-hash="${hash}"]`);
+
+  it('D7-1: a group renders one honest row — title verbatim, "3 copies open", park count 2 — above the open section', async () => {
+    const { doc, fake, unmount } = mount({
+      dupes: { list: () => Promise.resolve([GROUP]), park: () => undefined },
+    });
+    await settleBoot(fake);
+    await flush();
+    const row = rowOf(doc, GROUP.canonHash);
+    expect(row.textContent).toContain(GROUP.title);
+    expect(row.textContent).toContain('3 copies open'); // candidates + the kept copy
+    const parkBtn = mustQuery(row, '[data-action="park-dupes"]');
+    expect(parkBtn.textContent).toContain('Park 2 older copies'); // exactly the candidates
+    expect(mustQuery(row, '[data-action="ignore-dupe"]').textContent).toContain('Ignore');
+    const sections = doc.body
+      .querySelectorAll('[data-section]')
+      .map((n) => n.getAttribute('data-section'));
+    expect(sections.indexOf('dupes')).toBeGreaterThanOrEqual(0);
+    expect(sections.indexOf('dupes')).toBeLessThan(sections.indexOf('open'));
+    unmount();
+  });
+
+  it('D7-2 · CRITERION (opt-in law): ZERO park calls until the tap; after the tap exactly one (hash, keep) and a truth re-pull', async () => {
+    const parkCalls: [string, number][] = [];
+    let listCalls = 0;
+    const { doc, fake, unmount } = mount({
+      dupes: {
+        list: () => {
+          listCalls += 1;
+          return Promise.resolve(parkCalls.length === 0 ? [GROUP] : []);
+        },
+        park: (hash, keep) => parkCalls.push([hash, keep]),
+      },
+    });
+    await settleBoot(fake);
+    await flush();
+    expect(parkCalls).toHaveLength(0); // render never acts
+    const listBefore = listCalls;
+    mustQuery(rowOf(doc, GROUP.canonHash), '[data-action="park-dupes"]').click();
+    await flush();
+    expect(parkCalls).toEqual([[GROUP.canonHash, GROUP.keepBrowserTabId]]);
+    expect(listCalls).toBe(listBefore + 1); // truth re-pull after the gesture
+    expect(doc.body.querySelector('[data-widget="dupe-strip"]')).toBeNull(); // dissolved: list is empty now
+    unmount();
+  });
+
+  it('D7-3: ignore is per-group memory — row removed on tap, dismiss recorded, nothing parked', async () => {
+    const ignored: string[] = [];
+    const parkCalls: [string, number][] = [];
+    const { doc, fake, unmount } = mount({
+      dupes: {
+        list: () => Promise.resolve([GROUP]),
+        park: (hash, keep) => parkCalls.push([hash, keep]),
+        onIgnore: (hash) => ignored.push(hash),
+      },
+    });
+    await settleBoot(fake);
+    await flush();
+    mustQuery(rowOf(doc, GROUP.canonHash), '[data-action="ignore-dupe"]').click();
+    await flush();
+    expect(ignored).toEqual([GROUP.canonHash]);
+    expect(parkCalls).toHaveLength(0); // dismiss never closes anything
+    expect(doc.body.querySelector(`[data-canon-hash="${GROUP.canonHash}"]`)).toBeNull();
+    unmount();
+  });
+
+  it('D7-4: calm absence — no seam, empty groups, or a seam fault all render nothing', async () => {
+    const plain = mount();
+    await settleBoot(plain.fake);
+    await flush();
+    expect(plain.doc.body.querySelector('[data-widget="dupe-strip"]')).toBeNull();
+    plain.unmount();
+    const empty = mount({ dupes: { list: () => Promise.resolve([]), park: () => undefined } });
+    await settleBoot(empty.fake);
+    await flush();
+    expect(empty.doc.body.querySelector('[data-widget="dupe-strip"]')).toBeNull();
+    empty.unmount();
+    const faulty = mount({
+      dupes: { list: () => Promise.reject(new Error('wire down')), park: () => undefined },
+    });
+    await settleBoot(faulty.fake);
+    await flush();
+    expect(faulty.doc.body.querySelector('[data-widget="dupe-strip"]')).toBeNull();
+    expect(faulty.doc.body.querySelector('[role="alert"]')).toBeNull(); // no tantrum
     faulty.unmount();
   });
 });

@@ -21,6 +21,8 @@ import type { RecoveryService } from './recovery.js';
 import { createRecoveryService } from './recovery.js';
 import type { PrefsService } from './prefs.js';
 import { createPrefsService } from './prefs.js';
+import type { DupesService } from './dupes.js';
+import { createDupesService } from './dupes.js';
 import type { AiJobsService } from './ai-jobs.js';
 import { createAiJobsService } from './ai-jobs.js';
 import type { TabsInternalService } from './tabs-internal.js';
@@ -40,6 +42,8 @@ export type { PortabilityService } from './portability.js';
 export type { SystemService } from './system.js';
 export type { RecoveryService } from './recovery.js';
 export type { PrefsService } from './prefs.js';
+export type { DupesService } from './dupes.js';
+export { DUPE_IGNORE_PREFIX } from './dupes.js';
 export type { TabsInternalService } from './tabs-internal.js';
 
 /** The public application surface (one service per use-case family). */
@@ -54,6 +58,8 @@ export interface AppServices {
   readonly system: SystemService;
   readonly recovery: RecoveryService;
   readonly prefs: PrefsService;
+  /** E8-T07 dupe markers→actions (opt-in law; parks older copies only). */
+  readonly dupes: DupesService;
   readonly tabs: TabsInternalService;
   /** E8-T01 AI job pipeline service — ABSENT when deps.ai is unwired (hosts
    *  without the AI graph; the ai-lanes probe reports honest grey there). */
@@ -70,17 +76,21 @@ export const createServices = (deps: ServiceDeps): AppServices => {
     now: deps.now,
   });
   const edge = { deps, appender };
+  const park = createParkService(edge);
   return {
     missions: createMissionService(edge),
     trash: createTrashService(edge),
     undo: createUndoService(edge),
-    park: createParkService(edge),
+    park,
     resume: createResumeService(edge),
     queries: createQueryService(edge),
     portability: createPortabilityService(edge),
     system: createSystemService(edge),
     recovery: createRecoveryService(edge),
     prefs: createPrefsService(edge),
+    // E8-T07: the strip's one-tap action rides the flagship park vocabulary
+    // per tab (composition seam — the use-case never reaches adapters itself).
+    dupes: createDupesService(edge, { parkTab: (input, ctx) => park.parkTab(input, ctx) }),
     tabs: createTabsInternalService(edge),
     ...(deps.ai !== undefined ? { aiJobs: createAiJobsService(edge, deps.ai) } : {}),
   };

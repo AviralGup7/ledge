@@ -19,6 +19,7 @@ import type { CidEntropy } from '../components/session/ids.js';
 import { createViewStore, viewFrameOf, type ViewStore } from '../components/state/view-store.js';
 import { createHeartbeatPill, type HeartbeatPill } from '../components/widgets/heartbeat.js';
 import { renderBriefCard, type PendingBrief } from '../components/widgets/brief-card.js';
+import { renderDupeStrip, type DupeGroupModel } from '../components/widgets/dupe-strip.js';
 import {
   actionButton,
   renderMissionCard,
@@ -53,6 +54,21 @@ export interface GuardianDeps {
     | {
         readonly pending: () => Promise<readonly PendingBrief[]>;
         readonly onDismiss?: ((missionId: string) => void) | undefined;
+      }
+    | undefined;
+  /**
+   * E8-T07 dupe strip seam (Spec "marks, does not close" · roadmap action row
+   * · ADR note e8-dupe-actions): `list` answers the current open-duplicate
+   * groups; `park` is the ONE gesture (rides ParkDupeTabs at the v1.1 tier
+   * flip; today composition injects the application service directly);
+   * `onIgnore` records per-group dismiss. OPT-IN LAW: the surface never
+   * calls `park` except from an explicit tap. Default: absence (no strip).
+   */
+  readonly dupes?:
+    | {
+        readonly list: () => Promise<readonly DupeGroupModel[]>;
+        readonly park: (canonHash: string, keepBrowserTabId: number) => void;
+        readonly onIgnore?: ((canonHash: string) => void) | undefined;
       }
     | undefined;
 }
@@ -158,6 +174,12 @@ export const mountGuardian = (doc: Document, deps: GuardianDeps): Mounted => {
     cls: 'recovery-slot',
     attrs: { 'data-section': 'recovery' },
   });
+  // E8-T07: the dupe strip sits with the open-tab inventory it relieves —
+  // groups visible ⇒ one-tap relief; absent ⇒ nothing renders (no stub).
+  const dupeSlot = el(doc, 'section', {
+    cls: 'guardian-dupes',
+    attrs: { 'data-section': 'dupes', 'aria-label': copyOf('msg.aria.dupes') },
+  });
   const openSection = el(doc, 'section', {
     cls: 'guardian-open',
     attrs: { 'data-section': 'open', 'aria-label': copyOf('msg.aria.tabs') },
@@ -182,6 +204,7 @@ export const mountGuardian = (doc: Document, deps: GuardianDeps): Mounted => {
   root.appendChild(header);
   root.appendChild(pendingStrip);
   root.appendChild(recoverySlot);
+  root.appendChild(dupeSlot);
   root.appendChild(openSection);
   root.appendChild(briefSlot);
   root.appendChild(missionsSection);
@@ -233,6 +256,42 @@ export const mountGuardian = (doc: Document, deps: GuardianDeps): Mounted => {
       .catch(() => {
         // Seam fault = absence for NEW briefs (calm degrade): cards already
         // shown were true when written and stay; nothing new renders.
+      });
+  };
+
+  // ── E8-T07 dupe strip (opt-in law: `park` fires ONLY from a tap) ─────────
+  // Unlike briefs there is no shown-once stickiness: groups are fresh truth
+  // per pull — parked groups dissolve, ignored groups stay dismissed via the
+  // seam's memory (the strip itself keeps no truth).
+  const renderDupeSlot = (): void => {
+    const seam = deps.dupes;
+    if (seam === undefined || !booted) {
+      clearChildren(dupeSlot);
+      return; // absence-by-default
+    }
+    void seam
+      .list()
+      .then((groups) => {
+        clearChildren(dupeSlot);
+        if (groups.length === 0) return; // calm absence — no relief needed
+        dupeSlot.appendChild(
+          renderDupeStrip(doc, groups, {
+            onPark: (canonHash, keepBrowserTabId) => {
+              seam.park(canonHash, keepBrowserTabId);
+              // Truth re-pull: parked rows stop being live; the strip
+              // re-derives from the next list (never optimistic removal of
+              // anything the park did not actually take).
+              renderDupeSlot();
+            },
+            onIgnore: (canonHash) => {
+              seam.onIgnore?.(canonHash);
+              dupeSlot.querySelector(`[data-canon-hash="${canonHash}"]`)?.remove();
+            },
+          }),
+        );
+      })
+      .catch(() => {
+        // Seam fault: the strip is a nicety — open tabs below remain truth.
       });
   };
 
@@ -531,6 +590,9 @@ export const mountGuardian = (doc: Document, deps: GuardianDeps): Mounted => {
     // `booted` is still false — the once-per-mount render belongs HERE, with
     // later seeds only reconciling dismissals/removals).
     renderBriefs();
+    // E8-T07: the dupe strip's first pull (later seeds re-pull via the store
+    // subscription; every render is fresh truth — groups dissolve on park).
+    renderDupeSlot();
     // First-run posture: nothing kept and nothing parked ⇒ offer FirstRunIngest.
     if (b.heartbeat.keptCount === 0 && b.missions.length === 0) {
       clearChildren(recoverySlot);
@@ -664,6 +726,9 @@ export const mountGuardian = (doc: Document, deps: GuardianDeps): Mounted => {
       // E8-T05: briefs ride the bootstrap seed (the once-per-mount stamp keeps
       // any later seed from resurfacing a card the user already saw).
       renderBriefs();
+      // E8-T07: open-tab truth moved — re-derive the strip (parked groups
+      // dissolve; the seam's settings memory keeps ignores).
+      renderDupeSlot();
     }
   });
 

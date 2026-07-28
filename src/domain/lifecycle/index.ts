@@ -2,6 +2,12 @@
 export type { MissionState, TabState, TrashableKind, SubjectSnapshot } from './states.js';
 export type { LifecyclePolicy } from './policies/retention.js';
 export { DEFAULT_LIFECYCLE_POLICY, policyOf, trashRetentionMsOf } from './policies/retention.js';
+export type { DupeGroup, DupeGroupInput } from './policies/dupe-groups.js';
+export {
+  DUPE_GROUP_MIN_SIZE,
+  DUPE_GROUP_STRIP_CAP,
+  findDupeGroups,
+} from './policies/dupe-groups.js';
 export type {
   Decision,
   InverseAtom,

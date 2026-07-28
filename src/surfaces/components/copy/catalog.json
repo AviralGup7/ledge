@@ -9,6 +9,10 @@
       "heading": "Pick up where you left off",
       "suggested": "Suggested"
     },
+    "dupe": {
+      "heading": "Copies of the same page",
+      "copies": "{count} copies open"
+    },
     "empty": {
       "strip": "Nothing open. Everything is kept.",
       "archive": "Your future library. Park something and it will be here.",
@@ -88,7 +92,9 @@
       "scan-full": "Run a full scan",
       "scan-full-confirm": "Run it anyway",
       "download-bundle": "Download diagnostics bundle",
-      "dismiss-brief": "Don't show again"
+      "dismiss-brief": "Don't show again",
+      "park-dupes": "Park {count} older copies",
+      "ignore": "Ignore"
     },
     "undo": {
       "archived": "Back from the Archive.",
@@ -135,7 +141,8 @@
       "list": "List",
       "close": "Close",
       "input": "Input",
-      "brief": "Resumption brief"
+      "brief": "Resumption brief",
+      "dupes": "Duplicate tabs"
     },
     "section": {
       "library": "Library",
